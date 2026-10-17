@@ -38,11 +38,30 @@
         <p class="mt-4 text-xs text-slate-500">Supported format: .mov, .mp4 | Max size: 2 GB</p>
       </div>
 
-      <!-- Loading Indicator -->
-      <div id="loadingContent" class="hidden flex-col items-center">
-        <svg class="animate-spin text-[#910A38]" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
-        <h3 class="mt-4 text-lg font-semibold text-slate-800">Загрузка и локальный анализ...</h3>
-        <p class="text-xs text-slate-500 mt-1">Отправка файла на сервер FastAPI (http://localhost:8000)</p>
+      <!-- Real Upload Progress Bar Container -->
+      <div id="loadingContent" class="hidden flex-col items-center w-full max-w-md px-2">
+        <div class="flex items-center gap-3">
+          <svg class="animate-spin text-[#910A38] shrink-0" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+          <div class="text-left min-w-0">
+            <h3 id="uploadStatusTitle" class="text-base font-semibold text-slate-800">Загрузка видео на сервер...</h3>
+            <p id="uploadFileName" class="text-xs text-slate-500 truncate max-w-xs">video.mov</p>
+          </div>
+        </div>
+
+        <div class="w-full mt-5">
+          <div class="flex justify-between text-xs font-semibold mb-1.5">
+            <span id="uploadBytesText" class="text-slate-600">0 MB / 0 MB</span>
+            <span id="uploadPercentText" class="text-[#910A38] font-bold text-sm">0%</span>
+          </div>
+          <div class="h-3 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200">
+            <div id="uploadProgressBar" class="h-full rounded-full bg-gradient-to-r from-[#910A38] via-[#be123c] to-[#059669] transition-all duration-150" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="mt-2.5 flex items-center justify-between w-full text-xs text-slate-400">
+          <span id="uploadSpeedText">Скорость: рассчитывается...</span>
+          <span>FastAPI Local GPU</span>
+        </div>
       </div>
 
       <input id="file" type="file" accept=".mov,.mp4" class="hidden">
@@ -54,7 +73,7 @@
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
       </div>
       <h3 class="mt-4 text-lg font-semibold">Готов к анализу</h3>
-      <p class="mt-2 max-w-xs text-sm text-slate-600">Обработка выполняется полностью локально. Видео и результаты не передаются в облако.</p>
+      <p class="mt-2 max-w-xs text-sm text-slate-600">Обработка выполняется полностью локально на GPU. Видео и результаты не передаются в облако.</p>
       <span class="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-[#059669]">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         Offline Engine Active
@@ -103,32 +122,71 @@
     }
   });
 
-  async function handleUpload(file) {
+  function handleUpload(file) {
     if (!file) return;
 
     uploadContent.classList.add('hidden');
     loadingContent.classList.remove('hidden');
+    loadingContent.classList.add('flex');
+
+    document.getElementById('uploadFileName').innerText = file.name;
+    const totalMB = (file.size / (1024 * 1024)).toFixed(1);
+    document.getElementById('uploadBytesText').innerText = `0 MB / ${totalMB} MB`;
 
     const formData = new FormData();
     formData.append('file', file);
 
-    try {
-      const res = await fetch('/api/v1/analyze', {
-        method: 'POST',
-        body: formData
-      });
-      if (!res.ok) {
-        throw new Error(`Ошибка сервера: ${res.status}`);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/v1/analyze', true);
+
+    const startTime = Date.now();
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+        
+        document.getElementById('uploadProgressBar').style.width = `${pct}%`;
+        document.getElementById('uploadPercentText').innerText = `${pct}%`;
+        document.getElementById('uploadBytesText').innerText = `${loadedMB} MB / ${totalMB} MB`;
+
+        const elapsedSec = (Date.now() - startTime) / 1000;
+        if (elapsedSec > 0.4) {
+          const speedMBs = (e.loaded / (1024 * 1024) / elapsedSec).toFixed(1);
+          document.getElementById('uploadSpeedText').innerText = `Скорость: ${speedMBs} MB/s`;
+        }
+
+        if (pct >= 100) {
+          document.getElementById('uploadStatusTitle').innerText = 'Видео загружено! Запуск нейросети на GPU...';
+          document.getElementById('uploadSpeedText').innerText = 'Инициализация детектора YOLO-Pose и VLM...';
+        }
       }
-      const data = await res.json();
-      
-      // Перенаправляем на страницу результатов
-      window.location.href = `analyzed_2.html?job_id=${data.job_id}`;
-    } catch (err) {
-      alert('Ошибка обработки: ' + err.message);
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          window.location.href = `analyzed_2.html?job_id=${data.job_id}`;
+        } catch (err) {
+          alert('Ошибка ответа сервера: ' + err.message);
+        }
+      } else {
+        alert(`Ошибка сервера: ${xhr.status} ${xhr.statusText}`);
+        uploadContent.classList.remove('hidden');
+        loadingContent.classList.add('hidden');
+        loadingContent.classList.remove('flex');
+      }
+    };
+
+    xhr.onerror = () => {
+      alert('Сетевая ошибка при загрузке видео');
       uploadContent.classList.remove('hidden');
       loadingContent.classList.add('hidden');
-    }
+      loadingContent.classList.remove('flex');
+    };
+
+    xhr.send(formData);
   }
 </script>
 </body>

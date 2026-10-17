@@ -7,7 +7,6 @@
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <style>
 body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
-/* Стилизация скроллбара для раскадровки */
 #filmstripList::-webkit-scrollbar { height: 6px; }
 #filmstripList::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 9999px; }
 #filmstripList::-webkit-scrollbar-thumb { background: rgba(145, 10, 56, 0.6); border-radius: 9999px; }
@@ -35,30 +34,73 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
 <main class="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
   <div class="grid gap-4 xl:grid-cols-[1fr_1fr_1.6fr]">
 
-    <!-- Upload compact -->
-    <label for="file" class="flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-center hover:border-[#910A38]">
-      <svg class="text-[#910A38]" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
-      <h3 class="mt-2 font-semibold">Upload Video</h3>
-      <p class="mt-1 text-sm text-slate-600">Drag &amp; drop file</p>
-      <span class="mt-3 rounded-full bg-[#910A38] px-5 py-2 text-sm font-medium text-white">Select File</span>
-      <input id="file" type="file" accept=".mov,.mp4" class="hidden">
-    </label>
-
-    <!-- Processing -->
-    <div class="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 class="font-semibold">Processing Video</h3>
-      <p id="fileName" class="mt-1 truncate text-xs text-slate-600">cashier_branch12_2025-10-28.mov</p>
-      <p id="fileSize" class="text-xs text-slate-500">1.4 GB</p>
-      <div class="mt-2 flex items-center gap-3">
-        <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200"><div class="h-full w-full rounded-full bg-[#059669]"></div></div>
-        <span class="text-xs font-semibold text-[#059669]">100%</span>
+    <!-- Upload Card with Real Progress -->
+    <div id="uploadCard" class="relative flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-center transition-colors hover:border-[#910A38]">
+      <div id="uploadIdleContent" class="flex flex-col items-center">
+        <label for="file" class="cursor-pointer flex flex-col items-center">
+          <svg class="text-[#910A38]" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
+          <h3 class="mt-2 font-semibold">Upload Video</h3>
+          <p class="mt-1 text-sm text-slate-600">Drag &amp; drop file</p>
+          <span class="mt-3 rounded-full bg-[#910A38] px-5 py-2 text-sm font-medium text-white hover:opacity-90">Select File</span>
+        </label>
+        <input id="file" type="file" accept=".mov,.mp4" class="hidden">
       </div>
-      <ul class="mt-3 space-y-2 text-sm">
-        <li class="flex items-center gap-2"><svg class="text-[#059669]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>Video validation</li>
-        <li class="flex items-center gap-2"><svg class="text-[#059669]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>Frame extraction</li>
-        <li class="flex items-center gap-2"><svg class="text-[#059669]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>AI analysis</li>
-        <li class="flex items-center gap-2"><svg class="text-[#059669]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>Report generated</li>
-      </ul>
+
+      <!-- Uploading Active State -->
+      <div id="uploadActiveContent" class="hidden w-full flex-col items-center px-2">
+        <div class="flex items-center gap-2">
+          <svg class="animate-spin text-[#910A38]" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+          <span id="uploadCardStatus" class="text-xs font-semibold text-slate-800">Загрузка видео...</span>
+        </div>
+        <div class="w-full mt-3">
+          <div class="flex justify-between text-[11px] font-semibold mb-1">
+            <span id="uploadCardBytes" class="text-slate-500">0 MB / 0 MB</span>
+            <span id="uploadCardPercent" class="text-[#910A38]">0%</span>
+          </div>
+          <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200">
+            <div id="uploadCardBar" class="h-full rounded-full bg-gradient-to-r from-[#910A38] to-[#059669] transition-all duration-150" style="width: 0%"></div>
+          </div>
+        </div>
+        <p id="uploadCardSpeed" class="mt-2 text-[11px] text-slate-400">Скорость: рассчитывается...</p>
+      </div>
+    </div>
+
+    <!-- Processing Card with Working Progress Bar and Steps -->
+    <div class="rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold text-slate-800">Processing Video</h3>
+          <span id="processingPercent" class="text-xs font-bold text-[#059669]">0%</span>
+        </div>
+        <p id="fileName" class="mt-1 truncate text-xs text-slate-600 font-medium">Ожидание файла...</p>
+        <p id="fileSize" class="text-xs text-slate-500">-- MB</p>
+
+        <!-- Working Progress Bar -->
+        <div class="mt-2.5">
+          <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200">
+            <div id="processingBar" class="h-full rounded-full bg-gradient-to-r from-[#059669] to-[#10b981] transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <ul id="processingStepsList" class="mt-3 space-y-2 text-xs">
+          <li id="step1" class="flex items-center gap-2 text-slate-400 transition-colors">
+            <span id="stepIcon1" class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[10px]">1</span>
+            <span>Video validation &amp; decode</span>
+          </li>
+          <li id="step2" class="flex items-center gap-2 text-slate-400 transition-colors">
+            <span id="stepIcon2" class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[10px]">2</span>
+            <span>Frame extraction &amp; YOLO-Pose</span>
+          </li>
+          <li id="step3" class="flex items-center gap-2 text-slate-400 transition-colors">
+            <span id="stepIcon3" class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[10px]">3</span>
+            <span>AI VLM Inspection (Qwen2-VL)</span>
+          </li>
+          <li id="step4" class="flex items-center gap-2 text-slate-400 transition-colors">
+            <span id="stepIcon4" class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[10px]">4</span>
+            <span>Report &amp; 11-Frame Sequence Collage</span>
+          </li>
+        </ul>
+      </div>
 
       <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
         <div>Скорость: <span id="processingFps" class="font-semibold text-slate-800">-- FPS</span></div>
@@ -68,22 +110,22 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
 
     <!-- Verdict -->
     <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <div id="verdictBox" class="flex items-center gap-4 border-b border-red-100 bg-red-50 p-4">
+      <div id="verdictBox" class="flex items-center gap-4 border-b border-red-100 bg-red-50 p-4 transition-colors">
         <div id="verdictIcon" class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#DC2626] text-white">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4M12 16h.01"/></svg>
         </div>
         <div class="min-w-0 flex-1">
-          <h2 id="verdictTitle" class="text-2xl font-bold text-[#DC2626]">Violations Detected</h2>
-          <p id="violationsSummary" class="text-sm text-slate-700">3 violations found in this video</p>
+          <h2 id="verdictTitle" class="text-2xl font-bold text-[#DC2626]">Анализ видео...</h2>
+          <p id="violationsSummary" class="text-sm text-slate-700">Ожидание результатов локального инференса...</p>
         </div>
-        <div id="analyzedAt" class="hidden text-[11px] text-slate-600 sm:block">Analysis completed<br>17 Oct 2026, 17:45</div>
+        <div id="analyzedAt" class="hidden text-[11px] text-slate-600 sm:block">Analysis in progress</div>
       </div>
       <div class="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
-        <div><div class="text-xs text-slate-500">Total Duration</div><div id="totalDuration" class="text-2xl font-semibold">08:42</div></div>
-        <div><div class="text-xs text-slate-500">Violations</div><div id="violationsCount" class="text-2xl font-semibold text-[#DC2626]">3</div></div>
+        <div><div class="text-xs text-slate-500">Total Duration</div><div id="totalDuration" class="text-2xl font-semibold">--:--</div></div>
+        <div><div class="text-xs text-slate-500">Violations</div><div id="violationsCount" class="text-2xl font-semibold text-[#DC2626]">0</div></div>
         <div><div class="text-xs text-slate-500">No Violations</div><div id="noViolationsCount" class="text-2xl font-semibold text-[#059669]">0</div></div>
         <div class="flex items-center gap-2">
-          <div><div class="text-xs text-slate-500">Compliance Rate</div><div id="complianceRate" class="text-2xl font-semibold">65%</div></div>
+          <div><div class="text-xs text-slate-500">Compliance Rate</div><div id="complianceRate" class="text-2xl font-semibold">100%</div></div>
         </div>
       </div>
     </div>
@@ -104,7 +146,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     <div id="event" class="rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-between">
       <div>
         <div class="flex items-center justify-between">
-          <h3 class="font-semibold">Event Details</h3>
+          <h3 class="font-semibold text-slate-900">Event Details</h3>
           <span class="text-xs text-slate-400">Нажмите на кадр для зума</span>
         </div>
         <div class="mt-3 flex gap-3 rounded-lg border border-slate-100 p-3 bg-slate-50/50">
@@ -117,7 +159,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
             <p id="activeObservation" class="mt-1 text-xs text-slate-600 leading-relaxed">The cashier leaves the cash desk area and is not present at the workstation.</p>
           </div>
           <!-- Clickable Preview Thumbnail with Hover Overlay -->
-          <div class="relative hidden h-24 w-32 shrink-0 overflow-hidden rounded-md bg-slate-200 sm:block group cursor-pointer border border-slate-300 shadow-sm" onclick="openActiveIncidentModal()" title="Нажмите для рассмотрения вблизи">
+          <div id="activeImgContainer" class="relative hidden h-24 w-32 shrink-0 overflow-hidden rounded-md bg-slate-200 sm:block group cursor-pointer border border-slate-300 shadow-sm" onclick="openActiveIncidentModal()" title="Нажмите для рассмотрения вблизи">
             <img id="activeImg" src="" alt="Кадр" class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105" />
             <div class="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[11px] font-semibold gap-1">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
@@ -129,14 +171,14 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         <!-- Open Evidence Modal CTA Button -->
         <button id="openEvidenceModalBtn" onclick="openActiveIncidentModal()" class="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#910A38]/30 bg-rose-50/70 py-2 px-3 text-xs font-semibold text-[#910A38] hover:bg-rose-100/90 transition-colors shadow-sm">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
-          <span>Рассмотреть серию кадров (5 фото до / 5 фото после)</span>
+          <span id="evidenceBtnText">Рассмотреть серию кадров (5 фото до / 5 фото после)</span>
         </button>
 
         <div class="mt-3 rounded-lg bg-slate-50 p-3 border border-slate-100">
           <div class="text-xs font-semibold uppercase tracking-wider text-[#910A38]">Legal &amp; Regulatory Citation</div>
           <p id="activeCitationTitle" class="mt-1.5 text-xs font-semibold text-slate-800"></p>
           <p id="activeCitationQuote" class="mt-1 text-xs italic text-slate-600 leading-relaxed"></p>
-          <a id="activeCitationUrl" href="#" target="_blank" class="mt-2 inline-block text-xs font-medium text-blue-700 hover:underline">adilet.zan.kz ↗</a>
+          <a id="activeCitationUrl" href="https://adilet.zan.kz" target="_blank" class="mt-2 inline-block text-xs font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>
         </div>
       </div>
     </div>
@@ -147,7 +189,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     <div class="mb-3 flex items-center justify-between">
       <div>
         <h3 id="incidentsHeading" class="font-semibold text-slate-900">Detected Incidents</h3>
-        <p class="text-xs text-slate-500">Кликните на миниатюру в столбце Evidence Frame для детального изучения раскадровки</p>
+        <p id="incidentsSubheading" class="text-xs text-slate-500">Кликните на миниатюру в столбце Evidence Frame для детального изучения раскадровки</p>
       </div>
       <button id="exportBtn" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">⬇ Export Report</button>
     </div>
@@ -189,7 +231,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     </div>
     
     <!-- Center Controls: View Mode Tabs -->
-    <div class="flex items-center bg-slate-900 rounded-lg p-1 border border-slate-800">
+    <div id="modalTabsContainer" class="flex items-center bg-slate-900 rounded-lg p-1 border border-slate-800">
       <button id="modeSingleBtn" onclick="setModalMode('single')" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-[#910A38] text-white transition-colors flex items-center gap-1.5">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
         <span>Покадрово вблизи (HD)</span>
@@ -245,8 +287,8 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
   <div id="modalFilmstripContainer" class="bg-slate-900/90 rounded-xl border border-slate-800 p-2.5 sm:p-3">
     <div class="flex items-center justify-between text-xs text-slate-400 mb-2 px-1">
       <div class="flex items-center gap-2">
-        <span class="font-bold text-slate-200">Раскадровка события (11 кадров)</span>
-        <span class="text-[11px] text-slate-400 hidden sm:inline">• 5 фото ДО (-2.5с .. -0.5с) → <span class="text-rose-400 font-semibold">МОМЕНТ (0.0с)</span> → 5 фото ПОСЛЕ (+0.5с .. +2.5с)</span>
+        <span id="filmstripTitle" class="font-bold text-slate-200">Раскадровка события (11 кадров)</span>
+        <span id="filmstripSub" class="text-[11px] text-slate-400 hidden sm:inline">• 5 фото ДО (-2.5с .. -0.5с) → <span class="text-rose-400 font-semibold">МОМЕНТ (0.0с)</span> → 5 фото ПОСЛЕ (+0.5с .. +2.5с)</span>
       </div>
       <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
         <span>Кадры:</span> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[10px]">←</kbd> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[10px]">→</kbd>
@@ -257,7 +299,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
 
     <!-- Horizontal filmstrip thumbnails -->
     <div id="filmstripList" class="flex gap-2 overflow-x-auto pb-1">
-      <!-- 11 frames dynamically injected -->
+      <!-- Frames dynamically injected -->
     </div>
   </div>
 </div>
@@ -274,11 +316,49 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
   let currentPanY = 0;
   let isPanning = false;
   let startX = 0, startY = 0;
+  let simulatedProgress = 15;
+
+  function updateProcessingUI(pct, step, stageText) {
+    const bar = document.getElementById('processingBar');
+    const pctText = document.getElementById('processingPercent');
+    if (bar) bar.style.width = `${pct}%`;
+    if (pctText) pctText.innerText = `${pct}%`;
+
+    if (stageText) {
+      document.getElementById('fileName').innerText = stageText;
+    }
+
+    const checkSvg = `<svg class="text-[#059669]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+    const spinSvg = `<svg class="animate-spin text-[#059669]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>`;
+
+    for (let i = 1; i <= 4; i++) {
+      const stepLi = document.getElementById(`step${i}`);
+      const iconSpan = document.getElementById(`stepIcon${i}`);
+      if (!stepLi || !iconSpan) continue;
+
+      if (i < step || pct === 100) {
+        stepLi.className = "flex items-center gap-2 text-[#059669] font-medium transition-colors";
+        iconSpan.innerHTML = checkSvg;
+        iconSpan.className = "flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[#059669]";
+      } else if (i === step) {
+        stepLi.className = "flex items-center gap-2 text-slate-800 font-semibold transition-colors";
+        iconSpan.innerHTML = spinSvg;
+        iconSpan.className = "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-[#059669]";
+      } else {
+        stepLi.className = "flex items-center gap-2 text-slate-400 transition-colors";
+        iconSpan.innerHTML = `${i}`;
+        iconSpan.className = "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[10px]";
+      }
+    }
+  }
 
   async function loadJobData() {
     const params = new URLSearchParams(window.location.search);
     const jobId = params.get('job_id');
-    if (!jobId) return;
+    if (!jobId) {
+      document.getElementById('fileName').innerText = 'Загрузите видеозапись для начала аудита';
+      return;
+    }
 
     const poll = async () => {
       try {
@@ -290,8 +370,11 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         jobData = await res.json();
 
         if (jobData.status === 'processing') {
-          document.getElementById('fileName').innerText = 'Локальный анализ нейросетью на GPU...';
-          document.getElementById('violationsSummary').innerText = 'Выполняется покадровая детекция и проверка регламента...';
+          const s = jobData.stage_step || (simulatedProgress < 30 ? 1 : (simulatedProgress < 65 ? 2 : 3));
+          simulatedProgress = Math.min(95, Math.max(jobData.progress || 15, simulatedProgress + 8));
+          const stageMsg = jobData.stage || 'Локальный анализ нейросетью на GPU...';
+          updateProcessingUI(simulatedProgress, s, stageMsg);
+          document.getElementById('violationsSummary').innerText = stageMsg;
           setTimeout(poll, 1000);
           return;
         }
@@ -302,6 +385,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
           return;
         }
 
+        updateProcessingUI(100, 4, 'Анализ завершен');
         renderData(jobData);
 
       } catch (e) {
@@ -348,7 +432,9 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     const tbody = document.getElementById('incidentsTbody');
     tbody.innerHTML = '';
 
-    // КЕЙС 1: НАРУШЕНИЙ НЕТ (ЧИСТОЕ ВИДЕО)
+    // ==============================================================================
+    // КЕЙС 1: НАРУШЕНИЙ НЕТ (ШТАТНЫЙ РЕЖИМ, ЧИСТОЕ ВИДЕО)
+    // ==============================================================================
     if (!data.violationsCount || data.violationsCount === 0 || !data.incidents || data.incidents.length === 0) {
       const vBox = document.getElementById('verdictBox');
       if (vBox) {
@@ -357,38 +443,104 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       const vIcon = document.getElementById('verdictIcon');
       if (vIcon) {
         vIcon.className = 'flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#059669] text-white';
-        vIcon.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>`;
+        vIcon.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
       }
       const vTitle = document.getElementById('verdictTitle');
       if (vTitle) {
         vTitle.className = 'text-2xl font-bold text-[#059669]';
         vTitle.innerText = 'Нарушений не обнаружено';
       }
-      document.getElementById('violationsSummary').innerText = 'Кассовая дисциплина строго соблюдена согласно нормам НБРК';
+      document.getElementById('violationsSummary').innerText = 'Кассовая дисциплина строго соблюдена согласно нормативам НБРК';
       const noViolEl = document.getElementById('noViolationsCount');
       if (noViolEl) noViolEl.innerText = '1';
 
       document.getElementById('incidentsHeading').innerText = 'Detected Incidents (0)';
-      document.getElementById('activeTimecode').innerText = 'OK';
-      document.getElementById('activeType').innerText = 'Полное соответствие нормам';
-      document.getElementById('activeObservation').innerText = 'Все кассовые операции в кадре выполнены корректно, регламент безопасности и хранения ценностей не нарушен.';
-      document.getElementById('activeCitationTitle').innerText = 'Постановление Правления НБРК № 231';
-      document.getElementById('activeCitationQuote').innerText = '“Операции проведены в штатном режиме без замечаний.”';
+      document.getElementById('incidentsSubheading').innerText = 'Штатная смена — все требования регламента выполнены без замечаний';
 
+      // Event details card для чистого видео
+      const badge = document.getElementById('activeStatusBadge');
+      badge.className = 'rounded-md bg-emerald-600 px-2 py-1 text-xs font-semibold text-white';
+      badge.innerText = 'Compliant';
+
+      document.getElementById('activeTimecode').innerText = `00:00 - ${data.durationStr || '00:00'}`;
+      document.getElementById('activeType').innerText = 'Штатная работа кассира (Compliant)';
+      document.getElementById('activeObservation').innerText = 'Кассир находится на рабочем месте в пределах защищенной кабины. Передача ценностей выполняется исключительно через лоток. Посторонние предметы и использование мобильного телефона отсутствуют.';
+
+      // Показ кадра чистой кассы
+      const cleanImg = data.clean_frame || (data.file && data.file.clean_frame) || '';
+      const activeImg = document.getElementById('activeImg');
+      const activeImgContainer = document.getElementById('activeImgContainer');
+      if (cleanImg) {
+        activeImg.src = cleanImg;
+        activeImgContainer.classList.remove('hidden');
+        activeImgContainer.onclick = () => openCleanModal(cleanImg, data.durationStr);
+      }
+
+      // Кнопка рассмотрения кадра вблизи
+      const evBtn = document.getElementById('openEvidenceModalBtn');
+      evBtn.className = "mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-50 py-2 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100/90 transition-colors shadow-sm";
+      document.getElementById('evidenceBtnText').innerText = "Рассмотреть кадр кассовой зоны вблизи (HD)";
+      evBtn.onclick = () => openCleanModal(cleanImg, data.durationStr);
+
+      // Юридическая ссылка на нормативную базу НБРК
+      const cit = data.clean_citation || {
+        title: "Постановление Правления Национального Банка РК от 29 ноября 2019 года № 231 (Правила ведения кассовых операций)",
+        quote: "Кассир осуществляет прием и выдачу наличных денег и ценностей клиентам исключительно через передаточный лоток в пределах защищенной кассовой кабины, обеспечивая непрерывный визуальный контроль и соблюдение тайны операций.",
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
+      };
+
+      document.getElementById('activeCitationTitle').innerText = cit.title;
+      document.getElementById('activeCitationQuote').innerText = `“${cit.quote}”`;
+      const citUrl = document.getElementById('activeCitationUrl');
+      citUrl.href = cit.url;
+      citUrl.innerText = "adilet.zan.kz (Постановление Правления НБРК № 231) ↗";
+      citUrl.classList.remove('hidden');
+
+      // Строка в таблице с чистым кадром и ссылкой на НБРК
       tbody.innerHTML = `
-        <tr>
-          <td colspan="7" class="px-4 py-8 text-center text-slate-500">
-            <div class="text-[#059669] font-semibold text-base mb-1">✓ Нарушений кассовой дисциплины не выявлено</div>
-            <div class="text-xs">Все действия кассира и обслуживание клиентов соответствуют стандарту безопасности.</div>
+        <tr class="border-t border-slate-100 hover:bg-emerald-50/40 cursor-pointer transition-colors" onclick="openCleanModal('${cleanImg}', '${data.durationStr || ''}')">
+          <td class="px-3 py-3 font-semibold text-slate-700">1</td>
+          <td class="px-3 py-3">
+            <span class="font-mono text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded">00:00 - ${data.durationStr || '00:00'}</span>
+          </td>
+          <td class="px-3 py-3 font-semibold text-emerald-800">Штатная работа кассира (Compliant)</td>
+          <td class="px-3 py-3">
+            <div class="relative group cursor-pointer inline-flex flex-col items-center">
+              <div class="relative overflow-hidden rounded-md border border-emerald-300 shadow-sm bg-black">
+                <img src="${cleanImg}" class="h-12 w-20 object-cover transition-transform group-hover:scale-105" alt="Clean Frame" />
+                <div class="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-semibold gap-1">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+                  <span>Вблизи HD</span>
+                </div>
+              </div>
+              <span class="mt-1 text-[10px] font-semibold text-emerald-700 group-hover:underline flex items-center gap-0.5">
+                🔍 Кадр зоны кассы
+              </span>
+            </div>
+          </td>
+          <td class="max-w-xs px-3 py-3 text-xs text-slate-600 leading-relaxed">
+            Кассир находится на рабочем месте в пределах защищенной кабины. Передача ценностей выполняется через лоток. Посторонние предметы и нарушения регламента отсутствуют.
+          </td>
+          <td class="px-3 py-3 text-xs">
+            <div class="text-slate-800 font-medium">Постановление Правления НБРК № 231</div>
+            <a href="https://adilet.zan.kz/rus/docs/V1900019680" target="_blank" onclick="event.stopPropagation()" class="mt-1 inline-block font-semibold text-blue-700 hover:underline">adilet.zan.kz (Постановление № 231) ↗</a>
+          </td>
+          <td class="px-3 py-3">
+            <span class="rounded-md bg-emerald-50 border border-emerald-200 px-2.5 py-1 text-xs font-semibold text-emerald-700 flex items-center gap-1 w-fit">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Compliant (Норма)
+            </span>
           </td>
         </tr>
       `;
       return;
     }
 
+    // ==============================================================================
     // КЕЙС 2: ЕСТЬ НАРУШЕНИЯ
+    // ==============================================================================
     document.getElementById('violationsSummary').innerText = `${data.violationsCount} нарушений обнаружено в данной смене`;
     document.getElementById('incidentsHeading').innerText = `Detected Incidents (${data.incidents.length})`;
+    document.getElementById('incidentsSubheading').innerText = 'Кликните на миниатюру в столбце Evidence Frame для детального изучения раскадровки';
 
     data.incidents.forEach((item, idx) => {
       const tr = document.createElement('tr');
@@ -425,7 +577,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         <td class="max-w-xs px-3 py-3 text-xs text-slate-600 leading-relaxed">${item.observation}</td>
         <td class="px-3 py-3 text-xs">
           <div class="text-slate-800 font-medium">${item.citation ? item.citation.title : ''}</div>
-          ${item.citation && item.citation.url ? `<a href="${item.citation.url}" target="_blank" class="mt-1 inline-block font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>` : ''}
+          ${item.citation && item.citation.url ? `<a href="${item.citation.url}" target="_blank" onclick="event.stopPropagation()" class="mt-1 inline-block font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>` : ''}
         </td>
         <td class="px-3 py-3"><span class="rounded-md bg-red-50 border border-red-200 px-2 py-1 text-xs font-semibold text-[#DC2626]">${item.status}</span></td>
       `;
@@ -442,7 +594,6 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     currentIncidentIdx = idx;
     currentIncident = item;
 
-    // Highlight row in table
     if (jobData && jobData.incidents) {
       jobData.incidents.forEach((_, i) => {
         const row = document.getElementById(`incident-row-${i}`);
@@ -452,23 +603,36 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       });
     }
 
+    const badge = document.getElementById('activeStatusBadge');
+    badge.className = 'rounded-md bg-[#DC2626] px-2 py-1 text-xs font-semibold text-white';
+    badge.innerText = item.status || 'Violation';
+
     document.getElementById('activeTimecode').innerText = `${item.timeSec}s`;
     document.getElementById('activeType').innerText = item.type;
     document.getElementById('activeObservation').innerText = item.observation;
     
     const activeImg = document.getElementById('activeImg');
+    const container = document.getElementById('activeImgContainer');
     const thumbUrl = item.frame || (item.sequence_frames && item.sequence_frames.length > 0 ? item.sequence_frames[Math.floor(item.sequence_frames.length / 2)].image_data : "");
     if (thumbUrl) {
       activeImg.src = thumbUrl;
-      activeImg.parentElement.classList.remove('hidden');
+      container.classList.remove('hidden');
+      container.onclick = () => openActiveIncidentModal();
     }
+
+    const evBtn = document.getElementById('openEvidenceModalBtn');
+    evBtn.className = "mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#910A38]/30 bg-rose-50/70 py-2 px-3 text-xs font-semibold text-[#910A38] hover:bg-rose-100/90 transition-colors shadow-sm";
+    document.getElementById('evidenceBtnText').innerText = "Рассмотреть серию кадров (5 фото до / 5 фото после)";
+    evBtn.onclick = () => openActiveIncidentModal();
 
     if (item.citation) {
       document.getElementById('activeCitationTitle').innerText = item.citation.title || '';
       document.getElementById('activeCitationQuote').innerText = item.citation.quote ? `“${item.citation.quote}”` : '';
+      const citUrl = document.getElementById('activeCitationUrl');
       if (item.citation.url) {
-        document.getElementById('activeCitationUrl').href = item.citation.url;
-        document.getElementById('activeCitationUrl').classList.remove('hidden');
+        citUrl.href = item.citation.url;
+        citUrl.innerText = "adilet.zan.kz ↗";
+        citUrl.classList.remove('hidden');
       }
     }
   }
@@ -491,12 +655,12 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     currentIncidentIdx = incidentIdx;
     currentIncident = jobData.incidents[incidentIdx];
 
-    // Title and subtitle
     document.getElementById('modalTitle').innerText = `Инцидент #${incidentIdx + 1}`;
     document.getElementById('modalTimeBadge').innerText = `${currentIncident.timeSec}s`;
     document.getElementById('modalSubtitle').innerText = currentIncident.type;
+    document.getElementById('modalTabsContainer').style.display = 'flex';
+    document.getElementById('modalFilmstripContainer').style.display = 'block';
 
-    // Prepare sequence frames
     if (currentIncident.sequence_frames && currentIncident.sequence_frames.length > 0) {
       currentFrames = currentIncident.sequence_frames;
     } else if (currentIncident.frame) {
@@ -513,7 +677,6 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       currentFrames = [];
     }
 
-    // Set initial frame (targetFrameIdx if provided, or find moment frame)
     if (targetFrameIdx !== null && targetFrameIdx >= 0 && targetFrameIdx < currentFrames.length) {
       currentFrameIdx = targetFrameIdx;
     } else {
@@ -521,7 +684,6 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       currentFrameIdx = momentIdx >= 0 ? momentIdx : (currentFrames.length > 0 ? Math.floor(currentFrames.length / 2) : 0);
     }
 
-    // Setup collage image
     const collageImg = document.getElementById('modalCollageImg');
     const collageBtn = document.getElementById('modeCollageBtn');
     if (currentIncident.collage) {
@@ -531,10 +693,44 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       collageBtn.style.display = 'none';
     }
 
-    // Render filmstrip
     renderFilmstrip();
+    setModalMode('single');
+    resetZoom();
 
-    // Switch to single view mode and show modal
+    const modal = document.getElementById('imageModal');
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+  }
+
+  function openCleanModal(frameUrl, durationStr) {
+    if (!frameUrl) return;
+    document.getElementById('modalTitle').innerText = 'Кассовая зона (Штатный режим)';
+    document.getElementById('modalTimeBadge').innerText = durationStr || 'OK';
+    document.getElementById('modalSubtitle').innerText = 'Полное соответствие правилам безопасности и регламенту НБРК';
+
+    currentFrames = [{
+      index: 0,
+      offset_sec: 0.0,
+      timestamp_sec: 0,
+      label: 'Кадр кассы (Штатно)',
+      tag: 'Норма',
+      is_moment: false,
+      image_data: frameUrl
+    }];
+    currentFrameIdx = 0;
+
+    document.getElementById('modalTabsContainer').style.display = 'none';
+    document.getElementById('modalFilmstripContainer').style.display = 'none';
+    document.getElementById('btnPrevFrame').classList.add('hidden');
+    document.getElementById('btnNextFrame').classList.add('hidden');
+
+    const mainImg = document.getElementById('modalMainImg');
+    const badge = document.getElementById('frameBadge');
+    mainImg.src = frameUrl;
+
+    badge.className = "absolute top-3 left-3 rounded-md bg-emerald-600/90 text-white border border-emerald-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-xl flex items-center gap-1.5";
+    badge.innerHTML = `<span class="h-2 w-2 rounded-full bg-white"></span>✓ ШТАТНЫЙ РЕЖИМ (НАРУШЕНИЙ НЕТ)`;
+
     setModalMode('single');
     resetZoom();
 
@@ -544,7 +740,12 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
   }
 
   function openActiveIncidentModal() {
-    openIncidentModal(currentIncidentIdx);
+    if (jobData && jobData.violationsCount === 0) {
+      const cleanImg = jobData.clean_frame || (jobData.file && jobData.file.clean_frame) || '';
+      openCleanModal(cleanImg, jobData.durationStr);
+    } else {
+      openIncidentModal(currentIncidentIdx);
+    }
   }
 
   function closeModal() {
@@ -566,8 +767,10 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     if (mode === 'single') {
       singleView.classList.remove('hidden');
       collageView.classList.add('hidden');
-      prevBtn.classList.remove('hidden');
-      nextBtn.classList.remove('hidden');
+      if (currentFrames.length > 1) {
+        prevBtn.classList.remove('hidden');
+        nextBtn.classList.remove('hidden');
+      }
       singleBtn.className = "px-3 py-1.5 rounded-md text-xs font-semibold bg-[#910A38] text-white transition-colors flex items-center gap-1.5";
       collageBtn.className = "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5";
       renderActiveFrame();
@@ -630,7 +833,6 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     currentFrameIdx = idx;
     renderActiveFrame();
 
-    // Update filmstrip cards active highlight
     currentFrames.forEach((_, i) => {
       const card = document.getElementById(`filmstrip-card-${i}`);
       if (card) {
@@ -663,7 +865,6 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       badge.innerHTML = `▶ ПОСЛЕ СОБЫТИЯ: ${sf.label} • ${sf.timestamp_sec}с`;
     }
 
-    // Update prev / next button states
     const prevBtn = document.getElementById('btnPrevFrame');
     const nextBtn = document.getElementById('btnNextFrame');
     if (prevBtn) prevBtn.style.opacity = currentFrameIdx === 0 ? "0.3" : "1";
@@ -671,15 +872,11 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
   }
 
   function prevFrame() {
-    if (currentFrameIdx > 0) {
-      selectFrame(currentFrameIdx - 1);
-    }
+    if (currentFrameIdx > 0) selectFrame(currentFrameIdx - 1);
   }
 
   function nextFrame() {
-    if (currentFrameIdx < currentFrames.length - 1) {
-      selectFrame(currentFrameIdx + 1);
-    }
+    if (currentFrameIdx < currentFrames.length - 1) selectFrame(currentFrameIdx + 1);
   }
 
   // Zoom & Pan Handlers
@@ -708,7 +905,6 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     updateTransform();
   }
 
-  // Pan & Wheel listeners
   const imgContainer = document.getElementById('imageContainer');
   if (imgContainer) {
     imgContainer.addEventListener('mousedown', (e) => {
@@ -743,7 +939,6 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     }, { passive: false });
   }
 
-  // Keyboard navigation
   window.addEventListener('keydown', (e) => {
     const modal = document.getElementById('imageModal');
     if (!modal || modal.classList.contains('hidden')) return;
@@ -763,47 +958,107 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     }
   });
 
-  // Загрузка нового видео прямо со страницы результатов
+  // ==============================================================================
+  // REAL-TIME UPLOAD HANDLER WITH PROGRESS BAR
+  // ==============================================================================
   const fileInput = document.getElementById('file');
   if (fileInput) {
-    fileInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        document.getElementById('fileName').innerText = `Загрузка ${file.name}...`;
-        const res = await fetch('/api/v1/analyze', {
-          method: 'POST',
-          body: formData
-        });
-        const d = await res.json();
-        window.location.href = `analyzed_2.html?job_id=${d.job_id}`;
-      } catch (err) {
-        alert('Ошибка отправки файла: ' + err.message);
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleUpload(e.target.files[0]);
       }
     });
   }
 
+  function handleUpload(file) {
+    if (!file) return;
+
+    const idleContent = document.getElementById('uploadIdleContent');
+    const activeContent = document.getElementById('uploadActiveContent');
+    idleContent.classList.add('hidden');
+    activeContent.classList.remove('hidden');
+    activeContent.classList.add('flex');
+
+    const totalMB = (file.size / (1024 * 1024)).toFixed(1);
+    document.getElementById('uploadCardBytes').innerText = `0 MB / ${totalMB} MB`;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/v1/analyze', true);
+
+    const startTime = Date.now();
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        const loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+        
+        document.getElementById('uploadCardBar').style.width = `${pct}%`;
+        document.getElementById('uploadCardPercent').innerText = `${pct}%`;
+        document.getElementById('uploadCardBytes').innerText = `${loadedMB} MB / ${totalMB} MB`;
+
+        const elapsedSec = (Date.now() - startTime) / 1000;
+        if (elapsedSec > 0.4) {
+          const speedMBs = (e.loaded / (1024 * 1024) / elapsedSec).toFixed(1);
+          document.getElementById('uploadCardSpeed').innerText = `Скорость: ${speedMBs} MB/s`;
+        }
+
+        if (pct >= 100) {
+          document.getElementById('uploadCardStatus').innerText = 'Видео загружено! Запуск нейросети на GPU...';
+          document.getElementById('uploadCardSpeed').innerText = 'Подготовка видеопотока...';
+        }
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          window.location.href = `analyzed_2.html?job_id=${data.job_id}`;
+        } catch (err) {
+          alert('Ошибка ответа сервера: ' + err.message);
+        }
+      } else {
+        alert(`Ошибка сервера: ${xhr.status} ${xhr.statusText}`);
+        idleContent.classList.remove('hidden');
+        activeContent.classList.add('hidden');
+        activeContent.classList.remove('flex');
+      }
+    };
+
+    xhr.onerror = () => {
+      alert('Сетевая ошибка при загрузке видео');
+      idleContent.classList.remove('hidden');
+      activeContent.classList.add('hidden');
+      activeContent.classList.remove('flex');
+    };
+
+    xhr.send(formData);
+  }
+
   document.getElementById('exportBtn').onclick = () => {
-    if (!jobData || !jobData.incidents) return;
+    if (!jobData) return;
 
     let csvContent = "\uFEFF";
     csvContent += "№;Таймкод (сек);Тип нарушения;Описание AI;Статья НБРК;Ссылка на закон\n";
 
-    jobData.incidents.forEach((item, index) => {
-      const row = [
-        index + 1,
-        item.timeSec,
-        `"${(item.type || '').replace(/"/g, '""')}"`,
-        `"${(item.observation || '').replace(/"/g, '""')}"`,
-        `"${item.citation ? (item.citation.title || '').replace(/"/g, '""') : ''}"`,
-        `"${item.citation ? (item.citation.url || '') : ''}"`
-      ];
-      csvContent += row.join(";") + "\n";
-    });
+    if (jobData.incidents && jobData.incidents.length > 0) {
+      jobData.incidents.forEach((item, index) => {
+        const row = [
+          index + 1,
+          item.timeSec,
+          `"${(item.type || '').replace(/"/g, '""')}"`,
+          `"${(item.observation || '').replace(/"/g, '""')}"`,
+          `"${item.citation ? (item.citation.title || '').replace(/"/g, '""') : ''}"`,
+          `"${item.citation ? (item.citation.url || '') : ''}"`
+        ];
+        csvContent += row.join(";") + "\n";
+      });
+    } else {
+      csvContent += `1;"00:00 - ${jobData.durationStr || ''}";"Штатная работа кассира";"Все регламенты соблюдены";"Постановление Правления НБРК № 231";"https://adilet.zan.kz/rus/docs/V1900019680"\n`;
+    }
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
