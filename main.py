@@ -486,6 +486,15 @@ async def serve_analyzed_ui():
         return f.read()
 
 
+@app.get("/forte_logo.png")
+@app.get("/static/forte_logo.png")
+async def serve_forte_png_logo():
+    logo_path = os.path.join(CURRENT_DIR, "forte_logo.png")
+    if os.path.exists(logo_path):
+        return FileResponse(logo_path, media_type="image/png")
+    raise HTTPException(status_code=404, detail="Logo not found")
+
+
 @app.get("/fortebank_logo.svg")
 @app.get("/static/fortebank_logo.svg")
 async def serve_fortebank_logo():
