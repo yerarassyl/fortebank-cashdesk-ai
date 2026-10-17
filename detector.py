@@ -9,6 +9,7 @@ from PIL import Image
 from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
 from qwen_vl_utils import process_vision_info
 from legal_base import LEGAL_ARTICLES_RK
+from vlm_prompts import build_messages, parse_vlm_response
 from cv_triggers import PoseEventDetector
 
 def normalize_name(s):
@@ -176,38 +177,12 @@ class BankViolationDetector:
                     scale = 448 / max(h, w)
                     resized = cv2.resize(frame, (int(w * scale), int(h * scale)))
                     rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                    frames_pil.append(Image.fromarray(rgb))
+                    frames_pil.append((t, Image.fromarray(rgb)))
 
             if not frames_pil:
                 continue
 
-            if event_prompt:
-                prompt = (
-                    f"Это серия кадров из кабинета кассира банка вокруг ключевого момента {center_t:.1f}с. "
-                    f"{event_prompt}\n"
-                    "Опиши происходящее и укажи конкретное нарушение кассового регламента (оставление денег/сейфа, прием пищи/воды, передача денег мимо лотка, посторонний). "
-                    "Если нарушений нет, ответь строго 'ШТАТНО'."
-                )
-            else:
-                prompt = (
-                    f"Это серия кадров из кабинета кассира банка за период {start_t:.1f}с - {end_t:.1f}с. "
-                    "Проверь наличие нарушений кассовой дисциплины и безопасности: "
-                    "1. Оставление рабочего места кассиром, открытый сейф, ключи в замке или открытые ценности без присмотра. "
-                    "2. Клиент берет деньги сам со стола кассира, самовольный доступ к кассе. "
-                    "3. Выдача или прием наличности без пересчета на счетно-денежной машинке, передача денег из рук в руки без проверки. "
-                    "4. Посторонние предметы (баул, инкассаторская сумка на столе). "
-                    "Опиши происходящее и укажи конкретное нарушение кассового регламента. Если нарушений нет, ответь 'ШТАТНО'."
-                )
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "video", "video": frames_pil, "fps": 1.0},
-                        {"type": "text", "text": prompt}
-                    ]
-                }
-            ]
+            messages = build_messages(frames_pil, start_t, end_t, event_prompt)
 
             text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             image_inputs, video_inputs = process_vision_info(messages)
@@ -222,42 +197,46 @@ class BankViolationDetector:
             with torch.no_grad():
                 generated_ids = self.model.generate(
                     **inputs,
-                    max_new_tokens=160,
-                    do_sample=True,
-                    temperature=0.2,
-                    repetition_penalty=1.2
+                    max_new_tokens=200,
+                    do_sample=False
                 )
             trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
             vlm_text = self.processor.batch_decode(trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0].strip()
 
-            is_viol = (known_violation is not None) or (
-                ("штатно" not in vlm_text.lower()) and 
-                any(k in vlm_text.lower() for k in ["нарушен", "оставлен", "взял деньги", "без присмотра", "сейф", "переда"])
-            )
+            parsed = parse_vlm_response(vlm_text, len(frames_cv2))
+            if parsed is None:
+                # VLM не вернула JSON — откат на прежнюю эвристику по ключевым словам
+                low = vlm_text.lower()
+                parsed = {
+                    "violation": ("штатно" not in low) and any(k in low for k in ["нарушен", "оставлен", "взял деньги", "без присмотра", "сейф", "переда"]),
+                    "type": self._classify_violation(vlm_text),
+                    "frame": len(frames_cv2) // 2 + 1,
+                    "observation": vlm_text.replace('\n', ' ')
+                }
+
+            is_viol = (known_violation is not None) or parsed["violation"]
 
             if is_viol:
-                legal_key = self._classify_violation(vlm_text)
-                legal_data = LEGAL_ARTICLES_RK[legal_key]
+                legal_data = LEGAL_ARTICLES_RK.get(parsed["type"] or "", LEGAL_ARTICLES_RK["OTHER"])
 
-                # Формируем 1-2 кадра доказательства (evidence frames)
-                ev_frames = []
-                idx_mid = len(frames_cv2) // 2
-                best_t, best_cv = frames_cv2[idx_mid]
-                ev_frames.append({
-                    "timestamp_sec": round(float(best_t), 1),
-                    "image_base64": frame_to_base64(best_cv)
-                })
+                # Кадр, указанный VLM, и его соседи: 1-3 кадра-доказательства (раздел 10 ТЗ)
+                best_idx = (parsed["frame"] or len(frames_cv2) // 2 + 1) - 1
+                best_t = frames_cv2[best_idx][0]
+                ev_frames = [
+                    {"timestamp_sec": round(float(t), 1), "image_base64": frame_to_base64(f)}
+                    for t, f in frames_cv2[max(0, best_idx - 1): best_idx + 2]
+                ]
 
-                clean_vlm = vlm_text.replace('\n', ' ')
+                observation = parsed["observation"] or "VLM отметила признаки возможного нарушения на кадре."
                 full_description = (
-                    f"{clean_vlm}. "
-                    f"Нарушение нормативного акта: {legal_data['law_source']}. "
+                    f"{observation.rstrip('.')}. "
+                    f"Норматив: {legal_data['law_source']}. "
                     f"«{legal_data['law_quote']}»"
                 )
 
                 violations.append({
                     "type": legal_data["type"],
-                    "timecode_sec": round(float(center_t), 1),
+                    "timecode_sec": round(float(best_t), 1),
                     "description": full_description,
                     "evidence_frames": ev_frames
                 })

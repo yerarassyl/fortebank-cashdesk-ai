@@ -58,9 +58,8 @@ def main():
     video_files = os.listdir("videos")
     file_map = {normalize_name(os.path.splitext(f)[0]): os.path.join("videos", f) for f in video_files}
 
-    model_path = r"e:\sentra\yolo11m-pose.pt"
-    if not os.path.exists(model_path):
-        model_path = r"e:\sentra\yolov8n-pose.pt"
+    candidates = ["yolo11m-pose.pt", r"e:\sentra\yolo11m-pose.pt", "yolov8n-pose.pt", r"e:\sentra\yolov8n-pose.pt"]
+    model_path = next((c for c in candidates if os.path.exists(c)), "yolo11m-pose.pt")
     model = YOLO(model_path)
 
     BATCH_SIZE = 16
