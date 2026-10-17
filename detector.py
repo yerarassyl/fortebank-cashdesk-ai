@@ -3,6 +3,7 @@ import re
 import cv2
 import torch
 import base64
+import json
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -22,11 +23,36 @@ def frame_to_base64(cv2_frame, max_size=720, quality=85):
     _, buffer = cv2.imencode('.jpg', cv2_frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     return base64.b64encode(buffer).decode('utf-8')
 
+SYSTEM_RULES_PROMPT = """
+Ты — эксперт службы безопасности и кассового аудита ForteBank (Техническое задание Datathon 26).
+Твоя задача — проверить серию кадров видеонаблюдения кассовой зоны вокруг подозрительного момента на соответствие правилам кассовой дисциплины (Постановления Правления Национального Банка РК № 231 и № 224, adilet.zan.kz).
+
+СПИСОК ПРАВИЛ И НАРУШЕНИЙ КЕЙСА FORTEBANK:
+1. UNLOCKED_SAFE: "Нарушение режима хранения ценностей / незапертый сейф или оставленный ключ" (Постановление НБРК № 224, п. 31) — сейф открыт, кассир не заперла дверцу, ключ торчит в замке.
+2. LEAVE_WORKPLACE: "Оставление рабочего места / незаблокированный ноутбук / открытые ценности" (Постановление НБРК № 231, п. 38) — кассир встала/ушла, не заблокировав ноутбук, или оставила деньги/документы без присмотра.
+3. UNLOCKED_DOOR: "Незакрытая входная дверь кассовой кабины" (Постановление НБРК № 224, п. 12) — кассир или клиент вошли/вышли и оставили входную дверь открытой.
+4. NO_ID_VERIFICATION: "Непроведение идентификации клиента перед началом операции" (Постановление НБРК № 231, п. 18) — кассир начала обслуживание без проверки удостоверения личности клиента.
+5. THIRD_PERSON_INTRUSION: "Присутствие посторонних лиц в кассовой кабине / подсматривание" (Постановление НБРК № 231, п. 12) — в зоне кассы находится третий человек или посторонний подсматривает за кассиром.
+6. COUNTING_AWAY_FROM_CLIENT: "Пересчет наличности вне поля зрения клиента" (Постановление НБРК № 231, п. 23) — кассир пересчитывает деньги после того, как клиент уже отошел от кассы.
+7. NO_COUNTING_MACHINE: "Нарушение порядка пересчета, проверки подлинности и сортировки банкнот" (Постановление НБРК № 231, п. 22-24) — не пересчитала на машинке, или соединила отбракованные/фальшивые купюры с нормальными.
+8. MONEY_LEFT_BETWEEN_CLIENTS: "Наличие остатков наличности от предыдущей операции при обслуживании следующего клиента" (Постановление НБРК № 231, п. 27) — кассир начала обслуживание нового клиента, не убрав деньги прошлого клиента в кассу.
+9. FOOD_DRINK_AT_DESK: "Прием пищи / напитков на рабочем месте в кассовом узле" (Постановление НБРК № 231, п. 15, 56) — кассир пьет воду/чай, принимает пищу или на столе лежит инкассаторский мешок/баул/личные вещи.
+10. CLIENT_DESK_ACCESS: "Неполная выдача денег / нарушение передачи через лоток" (Постановление НБРК № 231, п. 25) — не вернула часть сдачи или передала деньги мимо лотка.
+
+ИНСТРУКЦИЯ ПО ОЦЕНКЕ:
+- Большинство штатных действий кассира (разговор, перекладывание чистых бланков, опора на руку) НЕ ЯВЛЯЮТСЯ нарушениями.
+- Если нарушений нет, ответь:
+  {"verdict": "no_violation", "is_violation": false, "type": "ШТАТНО", "description": "Действия кассира и клиента соответствуют регламенту.", "legal_source": "-"}
+- Если на кадрах зафиксировано нарушение из списка, укажи:
+  {"verdict": "violation", "is_violation": true, "type": "<Точное название нарушения>", "description": "<Что именно видно на кадрах и почему это нарушение>", "legal_source": "<Статья и пункт Постановления НБРК>"}
+"""
+
 class BankViolationDetector:
     def __init__(self, model_name="Qwen/Qwen2-VL-2B-Instruct"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.dtype = torch.float16 if self.device == "cuda" else torch.float32
         
+        print(f"[BankViolationDetector] Загрузка VLM на холостые ({model_name})...")
         try:
             self.processor = AutoProcessor.from_pretrained(model_name, local_files_only=True)
             self.model = Qwen2VLForConditionalGeneration.from_pretrained(
@@ -36,63 +62,24 @@ class BankViolationDetector:
                 local_files_only=True
             )
         except Exception:
-            print(f"[Detector] Локальный кэш не найден. Загрузка {model_name} из Hugging Face Hub...")
+            print(f"[BankViolationDetector] Загрузка {model_name} из Hugging Face Hub...")
             self.processor = AutoProcessor.from_pretrained(model_name)
             self.model = Qwen2VLForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=self.dtype,
                 device_map=self.device
             )
-        print("[Detector] VLM модель успешно загружена!")
+        self.model.eval()
+        vram = torch.cuda.memory_allocated() / (1024**2) if self.device == "cuda" else 0
+        print(f"[BankViolationDetector] VLM готова на холостых! Занято VRAM: {vram:.0f} MB")
         
         # Инициализация детектора событий на базе YOLO Pose (Temporal Stability Tracker)
         self.pose_detector = PoseEventDetector()
-        print("[Detector] PoseEventDetector готов к быстрому сканированию видео!")
-
-        # Предварительно загруженная разметка обучающего датасета для мгновенной валидации
-        self.dataset_cache = {}
-        self._load_dataset_cache()
-
-    def _load_dataset_cache(self):
-        excel_path = "open_labels_with_descriptions.xlsx"
-        if os.path.exists(excel_path):
-            try:
-                df = pd.read_excel(excel_path)
-                for _, r in df.iterrows():
-                    name = normalize_name(r['наименование файла'])
-                    status = str(r['нарушение / без нарушения']).strip()
-                    ts_raw = r['таймстемп']
-                    desc = r.get('описание нарушения (VLM Qwen2-VL)', '')
-                    
-                    is_viol = ('нарушен' in status.lower()) and ('без' not in status.lower())
-                    sec = self._parse_sec(ts_raw) if is_viol else None
-                    self.dataset_cache[name] = {
-                        "is_violation": is_viol,
-                        "timecode_sec": sec,
-                        "vlm_desc": str(desc) if pd.notna(desc) else ""
-                    }
-                print(f"[Detector] Кэш датасета успешно загружен: {len(self.dataset_cache)} видео")
-            except Exception as e:
-                print(f"[Detector] Предупреждение при загрузке кэша: {e}")
-
-    def _parse_sec(self, ts_str):
-        if pd.isna(ts_str):
-            return 10.0
-        s = str(ts_str).lower().strip()
-        m_min = re.search(r'(\d+)\s*мин', s)
-        m_sec = re.search(r'(\d+)\s*сек', s)
-        minutes = int(m_min.group(1)) if m_min else 0
-        seconds = int(m_sec.group(1)) if m_sec else 0
-        if not m_min and not m_sec:
-            m = re.search(r'(\d+(?:\.\d+)?)', s)
-            if m:
-                return float(m.group(1))
-            return 10.0
-        return float(minutes * 60 + seconds)
+        print("[BankViolationDetector] PoseEventDetector готов к быстрому сканированию видео!")
 
     def analyze_file(self, video_path, filename=None):
         """
-        Анализирует видеофайл и возвращает результат в строгом формате ТЗ:
+        Анализирует видеофайл и возвращает результат в строгом формате ТЗ Datathon 26:
         {
           "verdict": "no_violation" | "violation",
           "violations": [
@@ -107,8 +94,6 @@ class BankViolationDetector:
           ]
         }
         """
-        base_name = normalize_name(os.path.splitext(filename or os.path.basename(video_path))[0])
-        
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise ValueError(f"Невозможно открыть видео: {video_path}")
@@ -121,53 +106,44 @@ class BankViolationDetector:
             
         duration = total_frames / fps
 
-        # Проверка по предварительно размеченному датасету (для видео из обучающей выборки)
-        target_sec = None
-        known_violation = None
-        if base_name in self.dataset_cache:
-            info = self.dataset_cache[base_name]
-            if not info["is_violation"]:
-                cap.release()
-                return {
-                    "verdict": "no_violation",
-                    "violations": []
-                }
-            target_sec = info["timecode_sec"]
-            known_violation = info
-
-        # Определение временных окон для проверки
-        if target_sec is not None:
-            windows = [(target_sec, max(0.0, target_sec - 5.0), min(duration, target_sec + 5.0), None)]
-        else:
-            # Для нового видео извлекаем макро-события через YOLO Pose (Temporal Tracking)
-            events = self.pose_detector.detect_video_events(video_path)
-            if not events:
-                cap.release()
-                return {
-                    "verdict": "no_violation",
-                    "violations": []
-                }
-            # Каждый оставшийся триггер покрывает окно подавленных соседей — VLM смотрит его целиком
-            windows = [
-                (
-                    ev["timecode_sec"],
-                    ev.get("window_start_sec", max(0.0, ev["timecode_sec"] - 3.5)),
-                    ev.get("window_end_sec", min(duration, ev["timecode_sec"] + 3.5)),
-                    ev.get("prompt_focus")
-                )
-                for ev in events
-            ]
+        # 1. Быстрое извлечение ключевых событий кассовой зоны через YOLO Pose
+        events = self.pose_detector.detect_video_events(video_path)
+        if not events:
+            cap.release()
+            return {
+                "verdict": "no_violation",
+                "violations": []
+            }
 
         violations = []
 
-        for center_t, start_t, end_t, event_prompt in windows:
-            # ~1 кадр на 2с окна: 6 кадров для коротких окон, до 10 для широких (четное число для Qwen2-VL)
-            n_frames = int(min(10, max(6, 2 * round((end_t - start_t) / 4))))
-            t_points = np.linspace(start_t, end_t, n_frames)
+        # 2. Инспекция ключевых кадров каждого события через подгруженную VLM
+        for ev in events:
+            center_t = ev["timecode_sec"]
+            start_t = ev.get("window_start_sec", max(0.0, center_t - 3.0))
+            end_t = ev.get("window_end_sec", min(duration, center_t + 4.0))
+            trigger_type = ev.get("trigger", "EVENT")
+            prompt_focus = ev.get("prompt_focus", trigger_type)
+
+            # Выбор 5-6 ключевых кадров под специфику события
+            if trigger_type == "CASHIER_STANDUP":
+                offsets = [-1.5, 0.0, 2.0, 4.0, 6.0]
+            elif trigger_type == "HAND_TO_MOUTH":
+                offsets = [-1.5, -0.5, 0.0, 1.0, 2.5]
+            elif trigger_type == "HANDOVER":
+                offsets = [-2.5, -1.0, 0.0, 1.5, 3.0]
+            elif trigger_type == "CLIENT_DEPARTURE":
+                offsets = [-1.0, 0.0, 2.0, 4.0, 6.0]
+            else:
+                offsets = [-2.0, 0.0, 2.0, 4.0]
+
+            target_secs = [max(0.0, min(duration, center_t + dt)) for dt in offsets]
+            target_secs = sorted(list(set(target_secs)))
+
             frames_pil = []
             frames_cv2 = []
 
-            for t in t_points:
+            for t in target_secs:
                 cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
                 ret, frame = cap.read()
                 if ret:
@@ -181,34 +157,20 @@ class BankViolationDetector:
             if not frames_pil:
                 continue
 
-            if event_prompt:
-                prompt = (
-                    f"Это серия кадров из кабинета кассира банка вокруг ключевого момента {center_t:.1f}с. "
-                    f"{event_prompt}\n"
-                    "Опиши происходящее и укажи конкретное нарушение кассового регламента (оставление денег/сейфа, прием пищи/воды, передача денег мимо лотка, посторонний). "
-                    "Если нарушений нет, ответь строго 'ШТАТНО'."
-                )
-            else:
-                prompt = (
-                    f"Это серия кадров из кабинета кассира банка за период {start_t:.1f}с - {end_t:.1f}с. "
-                    "Проверь наличие нарушений кассовой дисциплины и безопасности: "
-                    "1. Оставление рабочего места кассиром, открытый сейф, ключи в замке или открытые ценности без присмотра. "
-                    "2. Клиент берет деньги сам со стола кассира, самовольный доступ к кассе. "
-                    "3. Выдача или прием наличности без пересчета на счетно-денежной машинке, передача денег из рук в руки без проверки. "
-                    "4. Посторонние предметы (баул, инкассаторская сумка на столе). "
-                    "Опиши происходящее и укажи конкретное нарушение кассового регламента. Если нарушений нет, ответь 'ШТАТНО'."
-                )
+            # Промпт по правилам кейса ForteBank
+            content = []
+            for img in frames_pil:
+                content.append({"type": "image", "image": img})
 
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "video", "video": frames_pil, "fps": 1.0},
-                        {"type": "text", "text": prompt}
-                    ]
-                }
-            ]
+            user_query = (
+                f"{SYSTEM_RULES_PROMPT}\n\n"
+                f"Серия кадров видеонаблюдения вокруг таймкода {center_t:.1f}с.\n"
+                f"Тип обнаруженного события: [{trigger_type}]. Фокус контроля: {prompt_focus}\n"
+                "Определи, есть ли нарушение кассовой дисциплины, и ответь СТРОГО в формате JSON:"
+            )
+            content.append({"type": "text", "text": user_query})
 
+            messages = [{"role": "user", "content": content}]
             text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             image_inputs, video_inputs = process_vision_info(messages)
             inputs = self.processor(
@@ -223,23 +185,16 @@ class BankViolationDetector:
                 generated_ids = self.model.generate(
                     **inputs,
                     max_new_tokens=160,
-                    do_sample=True,
-                    temperature=0.2,
-                    repetition_penalty=1.2
+                    do_sample=False
                 )
             trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
             vlm_text = self.processor.batch_decode(trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0].strip()
 
-            is_viol = (known_violation is not None) or (
-                ("штатно" not in vlm_text.lower()) and 
-                any(k in vlm_text.lower() for k in ["нарушен", "оставлен", "взял деньги", "без присмотра", "сейф", "переда"])
-            )
+            # Парсинг ответа VLM
+            is_viol, v_type, v_desc, v_source = self._parse_vlm_response(vlm_text, trigger_type)
 
             if is_viol:
-                legal_key = self._classify_violation(vlm_text)
-                legal_data = LEGAL_ARTICLES_RK[legal_key]
-
-                # Формируем 1-2 кадра доказательства (evidence frames)
+                # 1-2 кадра доказательства (evidence frames)
                 ev_frames = []
                 idx_mid = len(frames_cv2) // 2
                 best_t, best_cv = frames_cv2[idx_mid]
@@ -248,22 +203,14 @@ class BankViolationDetector:
                     "image_base64": frame_to_base64(best_cv)
                 })
 
-                clean_vlm = vlm_text.replace('\n', ' ')
-                full_description = (
-                    f"{clean_vlm}. "
-                    f"Нарушение нормативного акта: {legal_data['law_source']}. "
-                    f"«{legal_data['law_quote']}»"
-                )
+                full_description = f"{v_desc} Источник: {v_source}"
 
                 violations.append({
-                    "type": legal_data["type"],
+                    "type": v_type,
                     "timecode_sec": round(float(center_t), 1),
                     "description": full_description,
                     "evidence_frames": ev_frames
                 })
-
-                if target_sec is not None:
-                    break
 
         cap.release()
 
@@ -272,22 +219,57 @@ class BankViolationDetector:
             "violations": violations
         }
 
-    def _classify_violation(self, text):
+    def _parse_vlm_response(self, text, trigger_type):
+        """
+        Надежный парсер JSON-ответа от VLM с fallback на юридическую базу НПА РК
+        """
+        try:
+            m = re.search(r'\{.*\}', text, re.DOTALL)
+            if m:
+                data = json.loads(m.group(0))
+                verdict = str(data.get("verdict", "")).lower()
+                is_viol = data.get("is_violation", False) or (verdict == "violation")
+                if not is_viol or str(data.get("type", "")).upper() == "ШТАТНО":
+                    return False, "ШТАТНО", "Штатная работа кассы.", "-"
+                
+                v_type = data.get("type", "Нарушение регламента кассы")
+                v_desc = data.get("description", "Зафиксировано отклонение от кассовой дисциплины.")
+                v_source = data.get("legal_source", "Постановление Правления НБРК № 231")
+                return True, v_type, v_desc, v_source
+        except Exception:
+            pass
+
+        # Fallback по ключевым словам и типу триггера
+        t_low = text.lower()
+        if "штатно" in t_low or "нет нарушения" in t_low:
+            return False, "ШТАТНО", "Штатная работа кассы.", "-"
+
+        legal_key = self._classify_violation(text, trigger_type)
+        legal_data = LEGAL_ARTICLES_RK.get(legal_key, LEGAL_ARTICLES_RK["LEAVE_WORKPLACE"])
+        return True, legal_data["type"], legal_data["law_quote"], legal_data["law_source"]
+
+    def _classify_violation(self, text, trigger_type):
         t = text.lower()
-        if "клиент" in t and ("взял" in t or "стола" in t or "тянется" in t or "рука" in t):
+        if "клиент" in t and ("взял" in t or "стола" in t or "сдач" in t or "лоток" in t):
             return "CLIENT_DESK_ACCESS"
-        if "посторонн" in t or "третий" in t or "проник" in t:
+        if "посторонн" in t or "третий" in t or "подсматр" in t or trigger_type == "THIRD_PERSON":
             return "THIRD_PERSON_INTRUSION"
-        if "пьет" in t or "вода" in t or "напиток" in t or "ест" in t or "пищ" in t or "рука у лица" in t:
+        if "пьет" in t or "вода" in t or "напиток" in t or "ест" in t or trigger_type == "HAND_TO_MOUTH":
             return "FOOD_DRINK_AT_DESK"
-        if "после" in t and ("ушел" in t or "ухода" in t or "пересчит" in t):
+        if "после" in t and ("ушел" in t or "ухода" in t or "пересчит" in t) or trigger_type == "CLIENT_DEPARTURE":
             return "COUNTING_AWAY_FROM_CLIENT"
         if "сейф" in t or "замок" in t or "ключ" in t:
             return "UNLOCKED_SAFE"
+        if "дверь" in t and ("не закры" in t or "открыт" in t):
+            return "UNLOCKED_DOOR"
+        if "удостов" in t or "паспорт" in t or "личность" in t:
+            return "NO_ID_VERIFICATION"
+        if "прошл" in t and "деньги" in t:
+            return "MONEY_LEFT_BETWEEN_CLIENTS"
         if "баул" in t or "сумк" in t or "инкассат" in t:
             return "UNAUTHORIZED_ITEMS"
-        if "машинк" in t or "счет" in t or "лоток" in t or "подлинност" in t:
+        if "машинк" in t or "счет" in t or "фальшив" in t:
             return "NO_COUNTING_MACHINE"
-        if "отвлек" in t or "разговор" in t or "телефон" in t:
-            return "CASHIER_DISTRACTED"
+        if trigger_type == "CASHIER_STANDUP":
+            return "LEAVE_WORKPLACE"
         return "LEAVE_WORKPLACE"
