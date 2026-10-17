@@ -15,6 +15,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, CURRENT_DIR)
 
 from detector import BankViolationDetector, norm_name
+from legal_base import LEGAL_ARTICLES_RK
 
 app = FastAPI(
     title="Forte AI — Cashier Discipline Analytics",
@@ -105,11 +106,38 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
             v_type_raw = v.get("type", "LEAVE_WORKPLACE")
             law_key = LAW_TYPE_MAPPING.get(v_type_raw, v_type_raw)
 
-            law_info = LAWS_DB.get(law_key, {
-                "title": "Постановление Правления НБРК № 231",
-                "quote": "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания.",
-                "url": "https://adilet.zan.kz/rus/docs/P1900000231"
-            })
+            # Получаем запись из обновленной нормативной базы legal_base.py (точные цитаты и note)
+            legal_entry = LEGAL_ARTICLES_RK.get(v_type_raw) or LEGAL_ARTICLES_RK.get(law_key)
+            if legal_entry:
+                law_title = legal_entry["law_source"]
+                law_quote = legal_entry["law_quote"]
+                law_note = legal_entry.get("note", "")
+                law_url = "https://adilet.zan.kz"
+                if "(" in law_title and ")" in law_title:
+                    raw_url = law_title.split("(")[-1].rstrip(")")
+                    law_url = f"https://{raw_url}" if not raw_url.startswith("http") else raw_url
+
+                full_quote = law_quote
+                if law_note:
+                    full_quote += f" (Примечание: {law_note})"
+
+                law_info = {
+                    "title": law_title,
+                    "quote": full_quote,
+                    "url": law_url,
+                    "note": law_note
+                }
+            else:
+                law_info = LAWS_DB.get(law_key, {
+                    "title": "Постановление Правления НБРК от 29.11.2019 № 231",
+                    "quote": "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания.",
+                    "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+                    "note": ""
+                })
+
+            obs_text = v.get("description", "Зафиксировано отклонение от кассового регламента.")
+            if legal_entry and legal_entry.get("note") and "Примечание" not in obs_text:
+                obs_text = f"{obs_text.rstrip('.')} Примечание: {legal_entry['note']}"
 
             # Получаем кадр-доказательство
             frame_url = ""
@@ -133,7 +161,7 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
                 "id": idx + 1,
                 "timeSec": v.get("timecode_sec", 0.0),
                 "type": law_key,
-                "observation": v.get("description", "Зафиксировано отклонение от кассового регламента."),
+                "observation": obs_text,
                 "frame": frame_url,
                 "citation": law_info,
                 "status": "Violation"
