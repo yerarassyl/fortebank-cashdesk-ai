@@ -4,6 +4,8 @@ import uuid
 import json
 import time
 import cv2
+import base64
+import numpy as np
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, UploadFile, File, Header, BackgroundTasks, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -76,6 +78,82 @@ async def startup_event():
     print("[Forte AI] Сервер готов к работе! Аудит выполняется локально на этом ПК.")
     print("=" * 60)
 
+def extract_incident_sequence(video_path: str, t_event: float, duration_sec: float):
+    """
+    Извлекает серию из 11 кадров:
+    - 5 кадров ДО момента нарушения (с шагом 0.5 с)
+    - 1 центральный кадр МОМЕНТА нарушения (0.0 с)
+    - 5 кадров ПОСЛЕ момента нарушения (с шагом 0.5 с)
+    А также генерирует склеенный коллаж (composite collage) для мгновенного обзора всей раскадровки.
+    """
+    cap = cv2.VideoCapture(video_path)
+    offsets = [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+    sequence_frames = []
+    collage_thumbs = []
+
+    cell_w, cell_h = 280, 160
+
+    for i, dt in enumerate(offsets):
+        t = max(0.0, min(duration_sec - 0.05, t_event + dt))
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+
+        # HD кадр для детального зума и рассмотрения вблизи
+        h, w = frame.shape[:2]
+        scale = 960 / max(h, w)
+        hd_frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        _, hd_buf = cv2.imencode('.jpg', hd_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        hd_b64 = base64.b64encode(hd_buf).decode('utf-8')
+
+        is_moment = (dt == 0.0)
+        if is_moment:
+            label = f"★ МОМЕНТ ({t:.1f}с)"
+            tag = "Момент"
+        elif dt < 0:
+            label = f"{dt:+.1f}с (До)"
+            tag = "До"
+        else:
+            label = f"{dt:+.1f}с (После)"
+            tag = "После"
+
+        sequence_frames.append({
+            "index": i,
+            "offset_sec": dt,
+            "timestamp_sec": round(t, 1),
+            "label": label,
+            "tag": tag,
+            "is_moment": is_moment,
+            "image_data": f"data:image/jpeg;base64,{hd_b64}"
+        })
+
+        # Миниатюра для склеенного коллажа
+        thumb = cv2.resize(frame, (cell_w, cell_h))
+        bg_color = (20, 20, 200) if is_moment else (45, 45, 45)
+        cv2.rectangle(thumb, (0, 0), (cell_w, 24), bg_color, -1)
+        txt = f"НАРУШЕНИЕ [{t:.1f}s]" if is_moment else f"{label} [{t:.1f}s]"
+        cv2.putText(thumb, txt, (6, 17), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
+        if is_moment:
+            cv2.rectangle(thumb, (0, 0), (cell_w - 1, cell_h - 1), (0, 0, 255), 3)
+        collage_thumbs.append(thumb)
+
+    cap.release()
+
+    collage_b64 = ""
+    if collage_thumbs:
+        collage_w = cell_w * 6
+        collage_h = cell_h * 2
+        canvas = np.zeros((collage_h, collage_w, 3), dtype=np.uint8)
+        for idx, thumb in enumerate(collage_thumbs):
+            r = idx // 6
+            c = idx % 6
+            canvas[r * cell_h:(r + 1) * cell_h, c * cell_w:(c + 1) * cell_w] = thumb
+        _, col_buf = cv2.imencode('.jpg', canvas, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        collage_b64 = f"data:image/jpeg;base64,{base64.b64encode(col_buf).decode('utf-8')}"
+
+    return sequence_frames, collage_b64
+
 def process_video_locally(job_id: str, file_path: str, original_filename: str):
     """Локальная обработка видеозаписи на видеокарте этого ПК."""
     try:
@@ -139,30 +217,28 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
             if legal_entry and legal_entry.get("note") and "Примечание" not in obs_text:
                 obs_text = f"{obs_text.rstrip('.')} Примечание: {legal_entry['note']}"
 
-            # Получаем кадр-доказательство
-            frame_url = ""
-            if v.get("evidence_frames") and len(v["evidence_frames"]) > 0:
-                b64 = v["evidence_frames"][0].get("image_base64", "")
-                if b64:
-                    frame_url = f"data:image/jpeg;base64,{b64}" if not b64.startswith("data:") else b64
+            t_viol = float(v.get("timecode_sec", 0.0))
 
-            # Если кадр отсутствует, захватываем напрямую из видео
-            if not frame_url:
-                c = cv2.VideoCapture(file_path)
-                c.set(cv2.CAP_PROP_POS_MSEC, float(v.get("timecode_sec", 0)) * 1000)
-                ret, frame = c.read()
-                if ret:
-                    import base64
-                    _, buf = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-                    frame_url = "data:image/jpeg;base64," + base64.b64encode(buf).decode('utf-8')
-                c.release()
+            # Извлекаем серию из 11 кадров (5 до, момент, 5 после) и коллаж
+            seq_frames, collage_img = extract_incident_sequence(file_path, t_viol, duration_sec)
+
+            # Главный кадр инцидента — момент нарушения
+            moment_frame = ""
+            for sf in seq_frames:
+                if sf.get("is_moment"):
+                    moment_frame = sf["image_data"]
+                    break
+            if not moment_frame and seq_frames:
+                moment_frame = seq_frames[len(seq_frames) // 2]["image_data"]
 
             enriched_incidents.append({
                 "id": idx + 1,
-                "timeSec": v.get("timecode_sec", 0.0),
+                "timeSec": t_viol,
                 "type": law_key,
                 "observation": obs_text,
-                "frame": frame_url,
+                "frame": moment_frame,
+                "collage": collage_img,
+                "sequence_frames": seq_frames,
                 "citation": law_info,
                 "status": "Violation"
             })

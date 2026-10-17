@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forte AI — Cashier Discipline Analytics</title>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-<style>body{background:#F9FAFB;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}</style>
+<style>
+body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* Стилизация скроллбара для раскадровки */
+#filmstripList::-webkit-scrollbar { height: 6px; }
+#filmstripList::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 9999px; }
+#filmstripList::-webkit-scrollbar-thumb { background: rgba(145, 10, 56, 0.6); border-radius: 9999px; }
+#filmstripList::-webkit-scrollbar-thumb:hover { background: rgba(145, 10, 56, 1); }
+</style>
 </head>
 <body class="min-h-screen text-slate-900">
 
@@ -94,26 +101,43 @@
     </div>
 
     <!-- Event details -->
-    <div id="event" class="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 class="font-semibold">Event Details</h3>
-      <div class="mt-3 flex gap-3 rounded-lg border border-slate-100 p-3">
-        <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="rounded-md bg-[#DC2626] px-2 py-1 text-xs font-semibold text-white">Violation</span>
-            <span id="activeTimecode" class="font-semibold">00:44.2</span>
+    <div id="event" class="rounded-xl border border-slate-200 bg-white p-4 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold">Event Details</h3>
+          <span class="text-xs text-slate-400">Нажмите на кадр для зума</span>
+        </div>
+        <div class="mt-3 flex gap-3 rounded-lg border border-slate-100 p-3 bg-slate-50/50">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="activeStatusBadge" class="rounded-md bg-[#DC2626] px-2 py-1 text-xs font-semibold text-white">Violation</span>
+              <span id="activeTimecode" class="font-semibold font-mono">00:44.2</span>
+            </div>
+            <h4 id="activeType" class="mt-2.5 font-semibold text-slate-900">Leaving Cash Desk Unattended</h4>
+            <p id="activeObservation" class="mt-1 text-xs text-slate-600 leading-relaxed">The cashier leaves the cash desk area and is not present at the workstation.</p>
           </div>
-          <h4 id="activeType" class="mt-3 font-semibold">Leaving Cash Desk Unattended</h4>
-          <p id="activeObservation" class="mt-1 text-sm text-slate-600">The cashier leaves the cash desk area and is not present at the workstation.</p>
+          <!-- Clickable Preview Thumbnail with Hover Overlay -->
+          <div class="relative hidden h-24 w-32 shrink-0 overflow-hidden rounded-md bg-slate-200 sm:block group cursor-pointer border border-slate-300 shadow-sm" onclick="openActiveIncidentModal()" title="Нажмите для рассмотрения вблизи">
+            <img id="activeImg" src="" alt="Кадр" class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105" />
+            <div class="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[11px] font-semibold gap-1">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+              <span>Вблизи HD</span>
+            </div>
+          </div>
         </div>
-        <div class="relative hidden h-24 w-32 shrink-0 overflow-hidden rounded-md bg-slate-100 sm:block">
-          <img id="activeImg" src="" alt="Кадр" class="h-full w-full object-cover" />
+
+        <!-- Open Evidence Modal CTA Button -->
+        <button id="openEvidenceModalBtn" onclick="openActiveIncidentModal()" class="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg border border-[#910A38]/30 bg-rose-50/70 py-2 px-3 text-xs font-semibold text-[#910A38] hover:bg-rose-100/90 transition-colors shadow-sm">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+          <span>Рассмотреть серию кадров (5 фото до / 5 фото после)</span>
+        </button>
+
+        <div class="mt-3 rounded-lg bg-slate-50 p-3 border border-slate-100">
+          <div class="text-xs font-semibold uppercase tracking-wider text-[#910A38]">Legal &amp; Regulatory Citation</div>
+          <p id="activeCitationTitle" class="mt-1.5 text-xs font-semibold text-slate-800"></p>
+          <p id="activeCitationQuote" class="mt-1 text-xs italic text-slate-600 leading-relaxed"></p>
+          <a id="activeCitationUrl" href="#" target="_blank" class="mt-2 inline-block text-xs font-medium text-blue-700 hover:underline">adilet.zan.kz ↗</a>
         </div>
-      </div>
-      <div class="mt-3 rounded-lg bg-slate-50 p-3">
-        <div class="text-sm font-semibold text-[#910A38]">Legal &amp; Regulatory Citation</div>
-        <p id="activeCitationTitle" class="mt-2 text-xs font-semibold text-slate-800"></p>
-        <p id="activeCitationQuote" class="mt-1 text-xs italic text-slate-600"></p>
-        <a id="activeCitationUrl" href="#" target="_blank" class="mt-2 inline-block text-xs font-medium text-blue-700 hover:underline">adilet.zan.kz ↗</a>
       </div>
     </div>
   </div>
@@ -121,7 +145,10 @@
   <!-- Incidents table -->
   <div id="incidents" class="rounded-xl border border-slate-200 bg-white p-4">
     <div class="mb-3 flex items-center justify-between">
-      <h3 id="incidentsHeading" class="font-semibold">Detected Incidents</h3>
+      <div>
+        <h3 id="incidentsHeading" class="font-semibold text-slate-900">Detected Incidents</h3>
+        <p class="text-xs text-slate-500">Кликните на миниатюру в столбце Evidence Frame для детального изучения раскадровки</p>
+      </div>
       <button id="exportBtn" class="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">⬇ Export Report</button>
     </div>
     <div class="overflow-x-auto">
@@ -131,7 +158,7 @@
             <th class="px-3 py-2.5 font-semibold">#</th>
             <th class="px-3 py-2.5 font-semibold">Timestamp</th>
             <th class="px-3 py-2.5 font-semibold">Violation Type</th>
-            <th class="px-3 py-2.5 font-semibold">Evidence Frame</th>
+            <th class="px-3 py-2.5 font-semibold">Evidence Frame (11 кадров)</th>
             <th class="px-3 py-2.5 font-semibold">AI Visual Observation</th>
             <th class="px-3 py-2.5 font-semibold">Legal &amp; Regulatory Citation</th>
             <th class="px-3 py-2.5 font-semibold">Status</th>
@@ -144,8 +171,109 @@
   </div>
 </main>
 
+<!-- ============================================================================== -->
+<!-- INTERACTIVE HD LIGHTBOX MODAL & 11-FRAME COLLAGE -->
+<!-- ============================================================================== -->
+<div id="imageModal" class="fixed inset-0 z-50 hidden bg-slate-950/92 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 text-white select-none transition-all duration-200">
+  <!-- Top Bar -->
+  <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+    <div class="flex items-center gap-3">
+      <span class="rounded-lg bg-[#910A38] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-white">Forte AI Evidence</span>
+      <div>
+        <div class="flex items-center gap-2">
+          <h3 id="modalTitle" class="text-base sm:text-lg font-bold text-slate-100">Инцидент #1</h3>
+          <span id="modalTimeBadge" class="rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 text-xs font-mono font-semibold">44.2s</span>
+        </div>
+        <p id="modalSubtitle" class="text-xs text-slate-400">Leaving Cash Desk Unattended</p>
+      </div>
+    </div>
+    
+    <!-- Center Controls: View Mode Tabs -->
+    <div class="flex items-center bg-slate-900 rounded-lg p-1 border border-slate-800">
+      <button id="modeSingleBtn" onclick="setModalMode('single')" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-[#910A38] text-white transition-colors flex items-center gap-1.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+        <span>Покадрово вблизи (HD)</span>
+      </button>
+      <button id="modeCollageBtn" onclick="setModalMode('collage')" class="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        <span>Полный коллаж (11 кадров)</span>
+      </button>
+    </div>
+
+    <!-- Right Controls: Zoom & Close -->
+    <div class="flex items-center gap-2">
+      <div class="flex items-center bg-slate-900 rounded-lg border border-slate-800 p-0.5">
+        <button onclick="zoomOut()" title="Уменьшить (-)" class="px-2.5 py-1 text-slate-300 hover:text-white text-base font-bold transition-colors">−</button>
+        <span id="zoomLevelText" class="px-2 text-xs font-mono text-slate-300 min-w-[42px] text-center">100%</span>
+        <button onclick="zoomIn()" title="Увеличить (+)" class="px-2.5 py-1 text-slate-300 hover:text-white text-base font-bold transition-colors">+</button>
+        <button onclick="resetZoom()" title="Сбросить масштаб (100%)" class="px-2 py-1 text-xs font-medium text-slate-400 hover:text-white border-l border-slate-800 transition-colors">1:1</button>
+      </div>
+      <button onclick="closeModal()" title="Закрыть (Esc)" class="rounded-lg bg-slate-800 hover:bg-rose-600 p-2 text-slate-300 hover:text-white transition-colors">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Center Image Inspection Area -->
+  <div class="relative flex-1 flex items-center justify-center overflow-hidden my-2 select-none" id="imageContainer" style="cursor: grab;">
+    <!-- Prev / Next arrows for Single Mode -->
+    <button id="btnPrevFrame" onclick="prevFrame()" title="Предыдущий кадр (←)" class="absolute left-2 sm:left-4 z-20 rounded-full bg-slate-900/80 hover:bg-[#910A38] text-white p-3 backdrop-blur shadow-xl border border-slate-700 transition-all hover:scale-110">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <button id="btnNextFrame" onclick="nextFrame()" title="Следующий кадр (→)" class="absolute right-2 sm:right-4 z-20 rounded-full bg-slate-900/80 hover:bg-[#910A38] text-white p-3 backdrop-blur shadow-xl border border-slate-700 transition-all hover:scale-110">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+
+    <!-- Main View: Single Frame Container -->
+    <div id="singleFrameView" class="relative max-h-full max-w-full flex items-center justify-center">
+      <img id="modalMainImg" src="" alt="Кадр инцидента" class="max-h-[64vh] max-w-full rounded-lg shadow-2xl object-contain border border-slate-800 transition-transform duration-100 ease-out" />
+      <div id="frameBadge" class="absolute top-3 left-3 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-xl pointer-events-none">
+        ★ МОМЕНТ НАРУШЕНИЯ
+      </div>
+    </div>
+
+    <!-- Main View: Collage Grid View Container -->
+    <div id="collageView" class="hidden relative max-h-full max-w-full flex items-center justify-center">
+      <img id="modalCollageImg" src="" alt="Коллаж нарушения" class="max-h-[64vh] max-w-full rounded-lg shadow-2xl object-contain border border-slate-800 transition-transform duration-100 ease-out" />
+      <div class="absolute top-3 left-3 rounded-md bg-slate-900/85 text-white border border-slate-700 px-3 py-1.5 text-xs font-semibold backdrop-blur-md pointer-events-none">
+        🎞️ Коллаж всей раскадровки: 5 кадров ДО + МОМЕНТ НАРУШЕНИЯ + 5 кадров ПОСЛЕ (шаг 0.5с)
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom: 11-Frame Filmstrip Carousel -->
+  <div id="modalFilmstripContainer" class="bg-slate-900/90 rounded-xl border border-slate-800 p-2.5 sm:p-3">
+    <div class="flex items-center justify-between text-xs text-slate-400 mb-2 px-1">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-slate-200">Раскадровка события (11 кадров)</span>
+        <span class="text-[11px] text-slate-400 hidden sm:inline">• 5 фото ДО (-2.5с .. -0.5с) → <span class="text-rose-400 font-semibold">МОМЕНТ (0.0с)</span> → 5 фото ПОСЛЕ (+0.5с .. +2.5с)</span>
+      </div>
+      <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+        <span>Кадры:</span> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[10px]">←</kbd> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[10px]">→</kbd>
+        <span class="ml-2">Зум:</span> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[10px]">+</kbd> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[10px]">−</kbd>
+        <span class="ml-2">Закрыть:</span> <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200 font-mono text-[10px]">Esc</kbd>
+      </div>
+    </div>
+
+    <!-- Horizontal filmstrip thumbnails -->
+    <div id="filmstripList" class="flex gap-2 overflow-x-auto pb-1">
+      <!-- 11 frames dynamically injected -->
+    </div>
+  </div>
+</div>
+
 <script>
   let jobData = null;
+  let currentIncidentIdx = 0;
+  let currentIncident = null;
+  let currentFrames = [];
+  let currentFrameIdx = 0;
+  let modalMode = 'single'; // 'single' or 'collage'
+  let currentZoom = 1.0;
+  let currentPanX = 0;
+  let currentPanY = 0;
+  let isPanning = false;
+  let startX = 0, startY = 0;
 
   async function loadJobData() {
     const params = new URLSearchParams(window.location.search);
@@ -264,46 +392,77 @@
 
     data.incidents.forEach((item, idx) => {
       const tr = document.createElement('tr');
-      tr.className = `border-t border-slate-100 cursor-pointer ${idx === 0 ? 'bg-rose-50/60' : 'hover:bg-slate-50'}`;
+      tr.id = `incident-row-${idx}`;
+      tr.className = `border-t border-slate-100 cursor-pointer transition-colors ${idx === 0 ? 'bg-rose-50/70' : 'hover:bg-slate-50'}`;
       
-      const frameHtml = item.frame 
-        ? `<img src="${item.frame}" class="h-12 w-20 rounded object-cover shadow-sm" alt="Frame" />`
+      const thumbUrl = item.frame || (item.sequence_frames && item.sequence_frames.length > 0 ? item.sequence_frames[Math.floor(item.sequence_frames.length / 2)].image_data : "");
+
+      const frameCellHtml = thumbUrl 
+        ? `<div class="relative group cursor-pointer inline-flex flex-col items-center" onclick="event.stopPropagation(); openIncidentModal(${idx});">
+            <div class="relative overflow-hidden rounded-md border border-slate-200 shadow-sm bg-black">
+              <img src="${thumbUrl}" class="h-12 w-20 object-cover transition-transform group-hover:scale-105" alt="Frame" />
+              <div class="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-semibold gap-1">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+                <span>11 фото</span>
+              </div>
+            </div>
+            <span class="mt-1 text-[10px] font-semibold text-[#910A38] group-hover:underline flex items-center gap-0.5">
+              🔍 Вблизи (11 кадров)
+            </span>
+          </div>`
         : `<div class="h-12 w-20 rounded bg-slate-100 flex items-center justify-center text-[10px] text-slate-400">Нет кадра</div>`;
 
       tr.innerHTML = `
-        <td class="px-3 py-3">${idx + 1}</td>
+        <td class="px-3 py-3 font-semibold text-slate-700">${idx + 1}</td>
         <td class="px-3 py-3">
           <div class="flex items-center gap-2">
-            <span class="font-medium">${item.timeSec}s</span>
-            <button onclick="event.stopPropagation(); jumpToSec(${item.timeSec})" class="rounded bg-[#910A38] px-2 py-1 text-xs font-medium text-white hover:opacity-90">▶ Jump</button>
+            <span class="font-medium font-mono">${item.timeSec}s</span>
+            <button onclick="event.stopPropagation(); jumpToSec(${item.timeSec})" class="rounded bg-[#910A38] px-2 py-1 text-xs font-medium text-white hover:opacity-90 transition-opacity">▶ Jump</button>
           </div>
         </td>
-        <td class="px-3 py-3 font-medium">${item.type}</td>
-        <td class="px-3 py-3">${frameHtml}</td>
-        <td class="max-w-xs px-3 py-3 text-xs text-slate-600">${item.observation}</td>
+        <td class="px-3 py-3 font-semibold text-slate-900">${item.type}</td>
+        <td class="px-3 py-3">${frameCellHtml}</td>
+        <td class="max-w-xs px-3 py-3 text-xs text-slate-600 leading-relaxed">${item.observation}</td>
         <td class="px-3 py-3 text-xs">
-          <div class="text-slate-700 font-medium">${item.citation ? item.citation.title : ''}</div>
-          ${item.citation && item.citation.url ? `<a href="${item.citation.url}" target="_blank" class="mt-1 inline-block font-medium text-blue-700 hover:underline">adilet.zan.kz ↗</a>` : ''}
+          <div class="text-slate-800 font-medium">${item.citation ? item.citation.title : ''}</div>
+          ${item.citation && item.citation.url ? `<a href="${item.citation.url}" target="_blank" class="mt-1 inline-block font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>` : ''}
         </td>
-        <td class="px-3 py-3"><span class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-[#DC2626]">${item.status}</span></td>
+        <td class="px-3 py-3"><span class="rounded-md bg-red-50 border border-red-200 px-2 py-1 text-xs font-semibold text-[#DC2626]">${item.status}</span></td>
       `;
-      tr.onclick = () => selectIncident(item);
+      tr.onclick = () => selectIncident(item, idx);
       tbody.appendChild(tr);
     });
 
     if (data.incidents.length > 0) {
-      selectIncident(data.incidents[0]);
+      selectIncident(data.incidents[0], 0);
     }
   }
 
-  function selectIncident(item) {
+  function selectIncident(item, idx) {
+    currentIncidentIdx = idx;
+    currentIncident = item;
+
+    // Highlight row in table
+    if (jobData && jobData.incidents) {
+      jobData.incidents.forEach((_, i) => {
+        const row = document.getElementById(`incident-row-${i}`);
+        if (row) {
+          row.className = `border-t border-slate-100 cursor-pointer transition-colors ${i === idx ? 'bg-rose-50/80 font-medium' : 'hover:bg-slate-50'}`;
+        }
+      });
+    }
+
     document.getElementById('activeTimecode').innerText = `${item.timeSec}s`;
     document.getElementById('activeType').innerText = item.type;
     document.getElementById('activeObservation').innerText = item.observation;
-    if (item.frame) {
-      document.getElementById('activeImg').src = item.frame;
-      document.getElementById('activeImg').classList.remove('hidden');
+    
+    const activeImg = document.getElementById('activeImg');
+    const thumbUrl = item.frame || (item.sequence_frames && item.sequence_frames.length > 0 ? item.sequence_frames[Math.floor(item.sequence_frames.length / 2)].image_data : "");
+    if (thumbUrl) {
+      activeImg.src = thumbUrl;
+      activeImg.parentElement.classList.remove('hidden');
     }
+
     if (item.citation) {
       document.getElementById('activeCitationTitle').innerText = item.citation.title || '';
       document.getElementById('activeCitationQuote').innerText = item.citation.quote ? `“${item.citation.quote}”` : '';
@@ -322,6 +481,287 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
+
+  // ==============================================================================
+  // LIGHTBOX MODAL & SEQUENCE COLLAGE FUNCTIONS
+  // ==============================================================================
+
+  function openIncidentModal(incidentIdx, targetFrameIdx = null) {
+    if (!jobData || !jobData.incidents || !jobData.incidents[incidentIdx]) return;
+    currentIncidentIdx = incidentIdx;
+    currentIncident = jobData.incidents[incidentIdx];
+
+    // Title and subtitle
+    document.getElementById('modalTitle').innerText = `Инцидент #${incidentIdx + 1}`;
+    document.getElementById('modalTimeBadge').innerText = `${currentIncident.timeSec}s`;
+    document.getElementById('modalSubtitle').innerText = currentIncident.type;
+
+    // Prepare sequence frames
+    if (currentIncident.sequence_frames && currentIncident.sequence_frames.length > 0) {
+      currentFrames = currentIncident.sequence_frames;
+    } else if (currentIncident.frame) {
+      currentFrames = [{
+        index: 0,
+        offset_sec: 0.0,
+        timestamp_sec: currentIncident.timeSec,
+        label: 'Кадр нарушения',
+        tag: 'Момент',
+        is_moment: true,
+        image_data: currentIncident.frame
+      }];
+    } else {
+      currentFrames = [];
+    }
+
+    // Set initial frame (targetFrameIdx if provided, or find moment frame)
+    if (targetFrameIdx !== null && targetFrameIdx >= 0 && targetFrameIdx < currentFrames.length) {
+      currentFrameIdx = targetFrameIdx;
+    } else {
+      const momentIdx = currentFrames.findIndex(f => f.is_moment);
+      currentFrameIdx = momentIdx >= 0 ? momentIdx : (currentFrames.length > 0 ? Math.floor(currentFrames.length / 2) : 0);
+    }
+
+    // Setup collage image
+    const collageImg = document.getElementById('modalCollageImg');
+    const collageBtn = document.getElementById('modeCollageBtn');
+    if (currentIncident.collage) {
+      collageImg.src = currentIncident.collage;
+      collageBtn.style.display = 'inline-flex';
+    } else {
+      collageBtn.style.display = 'none';
+    }
+
+    // Render filmstrip
+    renderFilmstrip();
+
+    // Switch to single view mode and show modal
+    setModalMode('single');
+    resetZoom();
+
+    const modal = document.getElementById('imageModal');
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+  }
+
+  function openActiveIncidentModal() {
+    openIncidentModal(currentIncidentIdx);
+  }
+
+  function closeModal() {
+    const modal = document.getElementById('imageModal');
+    if (modal) modal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+    resetZoom();
+  }
+
+  function setModalMode(mode) {
+    modalMode = mode;
+    const singleView = document.getElementById('singleFrameView');
+    const collageView = document.getElementById('collageView');
+    const singleBtn = document.getElementById('modeSingleBtn');
+    const collageBtn = document.getElementById('modeCollageBtn');
+    const prevBtn = document.getElementById('btnPrevFrame');
+    const nextBtn = document.getElementById('btnNextFrame');
+
+    if (mode === 'single') {
+      singleView.classList.remove('hidden');
+      collageView.classList.add('hidden');
+      prevBtn.classList.remove('hidden');
+      nextBtn.classList.remove('hidden');
+      singleBtn.className = "px-3 py-1.5 rounded-md text-xs font-semibold bg-[#910A38] text-white transition-colors flex items-center gap-1.5";
+      collageBtn.className = "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5";
+      renderActiveFrame();
+    } else {
+      singleView.classList.add('hidden');
+      collageView.classList.remove('hidden');
+      prevBtn.classList.add('hidden');
+      nextBtn.classList.add('hidden');
+      collageBtn.className = "px-3 py-1.5 rounded-md text-xs font-semibold bg-[#910A38] text-white transition-colors flex items-center gap-1.5";
+      singleBtn.className = "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1.5";
+    }
+    resetZoom();
+  }
+
+  function renderFilmstrip() {
+    const list = document.getElementById('filmstripList');
+    list.innerHTML = '';
+
+    currentFrames.forEach((sf, idx) => {
+      const card = document.createElement('div');
+      card.id = `filmstrip-card-${idx}`;
+      card.className = `group relative flex flex-col items-center shrink-0 cursor-pointer rounded-lg border p-1 transition-all ${
+        idx === currentFrameIdx 
+          ? 'border-rose-500 bg-rose-950/70 ring-2 ring-rose-500 scale-105' 
+          : 'border-slate-800 bg-slate-900/60 hover:border-slate-600'
+      }`;
+      card.onclick = () => {
+        selectFrame(idx);
+        if (modalMode !== 'single') setModalMode('single');
+      };
+
+      let tagBadgeClass = "text-slate-300";
+      if (sf.is_moment) {
+        tagBadgeClass = "text-rose-400 font-bold";
+      } else if (sf.offset_sec < 0) {
+        tagBadgeClass = "text-amber-300";
+      } else {
+        tagBadgeClass = "text-sky-300";
+      }
+
+      card.innerHTML = `
+        <div class="relative h-14 w-24 overflow-hidden rounded bg-black">
+          <img src="${sf.image_data}" class="h-full w-full object-cover transition-transform group-hover:scale-105" />
+          <span class="absolute bottom-1 right-1 rounded px-1 text-[9px] font-mono font-bold ${
+            sf.is_moment ? 'bg-rose-600 text-white' : 'bg-black/75 text-slate-200'
+          }">
+            ${sf.timestamp_sec}s
+          </span>
+        </div>
+        <div class="mt-1 flex items-center gap-1 text-[10px] font-semibold tracking-tight ${tagBadgeClass}">
+          ${sf.label}
+        </div>
+      `;
+      list.appendChild(card);
+    });
+  }
+
+  function selectFrame(idx) {
+    if (idx < 0 || idx >= currentFrames.length) return;
+    currentFrameIdx = idx;
+    renderActiveFrame();
+
+    // Update filmstrip cards active highlight
+    currentFrames.forEach((_, i) => {
+      const card = document.getElementById(`filmstrip-card-${i}`);
+      if (card) {
+        if (i === currentFrameIdx) {
+          card.className = 'group relative flex flex-col items-center shrink-0 cursor-pointer rounded-lg border border-rose-500 bg-rose-950/70 ring-2 ring-rose-500 scale-105 p-1 transition-all';
+          card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } else {
+          card.className = 'group relative flex flex-col items-center shrink-0 cursor-pointer rounded-lg border border-slate-800 bg-slate-900/60 hover:border-slate-600 p-1 transition-all';
+        }
+      }
+    });
+  }
+
+  function renderActiveFrame() {
+    if (!currentFrames || currentFrames.length === 0) return;
+    const sf = currentFrames[currentFrameIdx];
+    const mainImg = document.getElementById('modalMainImg');
+    const badge = document.getElementById('frameBadge');
+
+    mainImg.src = sf.image_data;
+
+    if (sf.is_moment) {
+      badge.className = "absolute top-3 left-3 rounded-md bg-rose-600/90 text-white border border-rose-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-xl flex items-center gap-1.5";
+      badge.innerHTML = `<span class="h-2 w-2 rounded-full bg-white animate-pulse"></span>★ ТОЧНЫЙ МОМЕНТ НАРУШЕНИЯ (${sf.timestamp_sec}с)`;
+    } else if (sf.offset_sec < 0) {
+      badge.className = "absolute top-3 left-3 rounded-md bg-amber-600/90 text-white border border-amber-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-xl flex items-center gap-1.5";
+      badge.innerHTML = `◀ ДО СОБЫТИЯ: ${sf.label} • ${sf.timestamp_sec}с`;
+    } else {
+      badge.className = "absolute top-3 left-3 rounded-md bg-sky-600/90 text-white border border-sky-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-xl flex items-center gap-1.5";
+      badge.innerHTML = `▶ ПОСЛЕ СОБЫТИЯ: ${sf.label} • ${sf.timestamp_sec}с`;
+    }
+
+    // Update prev / next button states
+    const prevBtn = document.getElementById('btnPrevFrame');
+    const nextBtn = document.getElementById('btnNextFrame');
+    if (prevBtn) prevBtn.style.opacity = currentFrameIdx === 0 ? "0.3" : "1";
+    if (nextBtn) nextBtn.style.opacity = currentFrameIdx === currentFrames.length - 1 ? "0.3" : "1";
+  }
+
+  function prevFrame() {
+    if (currentFrameIdx > 0) {
+      selectFrame(currentFrameIdx - 1);
+    }
+  }
+
+  function nextFrame() {
+    if (currentFrameIdx < currentFrames.length - 1) {
+      selectFrame(currentFrameIdx + 1);
+    }
+  }
+
+  // Zoom & Pan Handlers
+  function updateTransform() {
+    const activeEl = modalMode === 'single' ? document.getElementById('modalMainImg') : document.getElementById('modalCollageImg');
+    if (activeEl) {
+      activeEl.style.transform = `translate(${currentPanX}px, ${currentPanY}px) scale(${currentZoom})`;
+    }
+    document.getElementById('zoomLevelText').innerText = `${Math.round(currentZoom * 100)}%`;
+  }
+
+  function zoomIn() {
+    currentZoom = Math.min(3.5, currentZoom + 0.25);
+    updateTransform();
+  }
+
+  function zoomOut() {
+    currentZoom = Math.max(0.5, currentZoom - 0.25);
+    updateTransform();
+  }
+
+  function resetZoom() {
+    currentZoom = 1.0;
+    currentPanX = 0;
+    currentPanY = 0;
+    updateTransform();
+  }
+
+  // Pan & Wheel listeners
+  const imgContainer = document.getElementById('imageContainer');
+  if (imgContainer) {
+    imgContainer.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+      isPanning = true;
+      startX = e.clientX - currentPanX;
+      startY = e.clientY - currentPanY;
+      imgContainer.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      currentPanX = e.clientX - startX;
+      currentPanY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isPanning) {
+        isPanning = false;
+        if (imgContainer) imgContainer.style.cursor = 'grab';
+      }
+    });
+
+    imgContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        zoomIn();
+      } else {
+        zoomOut();
+      }
+    }, { passive: false });
+  }
+
+  // Keyboard navigation
+  window.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('imageModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    if (e.key === 'Escape') {
+      closeModal();
+    } else if (e.key === 'ArrowLeft') {
+      prevFrame();
+    } else if (e.key === 'ArrowRight') {
+      nextFrame();
+    } else if (e.key === '+' || e.key === '=') {
+      zoomIn();
+    } else if (e.key === '-') {
+      zoomOut();
+    } else if (e.key === '0') {
+      resetZoom();
+    }
+  });
 
   // Загрузка нового видео прямо со страницы результатов
   const fileInput = document.getElementById('file');
