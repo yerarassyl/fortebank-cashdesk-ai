@@ -215,15 +215,16 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
             v_type_raw = v.get("type", "LEAVE_WORKPLACE")
             canonical_type = LAW_TYPE_MAPPING.get(v_type_raw, v_type_raw)
 
-            # Получаем запись из нормативной базы laws.json (сформированной на основе laws_database_json.md)
+            # Получаем запись из новой нормативной базы laws.json
             law_entry = LAWS_DB.get(v_type_raw) or LAWS_DB.get(canonical_type) or {}
             
             # Фоллбэк на legal_base если есть специальное примечание
             legal_entry = LEGAL_ARTICLES_RK.get(v_type_raw) or LEGAL_ARTICLES_RK.get(canonical_type) or {}
 
-            law_title = law_entry.get("title") or legal_entry.get("law_source") or "ПП НБРК № 231"
+            law_article = law_entry.get("law") or law_entry.get("law_title") or legal_entry.get("law_source") or "ПП НБРК № 231"
+            law_name_ru = law_entry.get("title") or law_entry.get("name_ru") or v.get("description", "Нарушение кассовой дисциплины")
             law_quote = law_entry.get("quote") or legal_entry.get("law_quote") or "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания."
-            law_name_ru = law_entry.get("name_ru") or v.get("description", "Нарушение кассовой дисциплины")
+            law_visual = law_entry.get("visual_sign", "")
             law_group = law_entry.get("group") or "Нарушения кассовой дисциплины"
             criticality = law_entry.get("criticality") or "HIGH"
             law_url = law_entry.get("url") or "https://adilet.zan.kz/rus/docs/P1900000231"
@@ -234,9 +235,11 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
                 full_quote = f"{law_quote} (Примечание: {law_note})"
 
             law_info = {
-                "title": law_title,
+                "title": law_article,
+                "law": law_article,
                 "name_ru": law_name_ru,
                 "quote": full_quote,
+                "visual_sign": law_visual,
                 "group": law_group,
                 "criticality": criticality,
                 "url": law_url,
@@ -331,9 +334,11 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
         c.release()
 
         clean_citation = {
-            "title": "Постановление Правления Национального Банка РК от 29 ноября 2019 года № 231",
+            "title": "ПП НБРК № 231 (Правила ведения кассовых операций)",
+            "law": "ПП НБРК № 231",
             "name_ru": "Кассовый регламент и порядок ведения кассовых операций соблюдены в полном объеме",
             "quote": "Кассир осуществляет прием и выдачу наличных денег и ценностей клиентам исключительно через передаточный кассовый лоток в пределах защищенной кассовой кабины, обеспечивая непрерывный визуальный контроль и соблюдение тайны операций.",
+            "visual_sign": "Кассир находится на рабочем месте, сейф закрыт, посторонних лиц и предметов нет.",
             "url": "https://adilet.zan.kz/rus/docs/P1900000231",
             "group": "Соответствие нормативным требованиям НБ РК",
             "criticality": "NORMAL",

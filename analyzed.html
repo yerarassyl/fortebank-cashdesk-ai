@@ -273,6 +273,9 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
           <div class="mt-2 border-l-2 border-[#910A38] pl-2.5">
             <p id="activeCitationQuote" class="text-xs italic text-slate-600 leading-relaxed"></p>
           </div>
+          <div id="activeCitationVisualContainer" class="mt-2 hidden rounded bg-amber-50/70 border border-amber-200/50 p-2 text-[11px] text-amber-900 leading-relaxed">
+            <span class="font-bold text-amber-800">Визуальный критерий (AI):</span> <span id="activeCitationVisual"></span>
+          </div>
           <a id="activeCitationUrl" href="https://adilet.zan.kz" target="_blank" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>
         </div>
       </div>
@@ -790,8 +793,20 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     evBtn.onclick = () => openActiveIncidentModal();
 
     if (item.citation) {
-      document.getElementById('activeCitationTitle').innerText = item.citation.title || '';
+      document.getElementById('activeCitationTitle').innerText = item.citation.title || item.citation.law || '';
       document.getElementById('activeCitationQuote').innerText = item.citation.quote ? `“${item.citation.quote}”` : '';
+
+      const vEl = document.getElementById('activeCitationVisual');
+      const vContainer = document.getElementById('activeCitationVisualContainer');
+      if (vEl && vContainer) {
+        if (item.citation.visual_sign) {
+          vEl.innerText = item.citation.visual_sign;
+          vContainer.classList.remove('hidden');
+        } else {
+          vContainer.classList.add('hidden');
+        }
+      }
+
       const citUrl = document.getElementById('activeCitationUrl');
       if (item.citation.url) {
         citUrl.href = item.citation.url;
