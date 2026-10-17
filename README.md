@@ -215,6 +215,41 @@ curl -X GET "http://localhost:8000/api/v1/jobs/a1b2c3d4" \
 
 ---
 
+## 🚀 Быстрое развертывание и перенос на другой ПК
+
+### 1. Клонирование репозитория
+```bash
+git clone -b deploy/portable-server https://github.com/yerarassyl/fortebank-cashdesk-ai.git
+cd fortebank-cashdesk-ai
+```
+
+### 2. Настройка виртуального окружения (Python 3.10)
+```bash
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Linux:
+source venv/bin/activate
+```
+
+### 3. Установка зависимостей и CUDA PyTorch
+```bash
+pip install -r requirements.txt
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+```
+
+### 4. Запуск сервера
+- **Windows:** двойной клик на `start.bat` или `python main.py`
+- **Linux:** `./start.sh`
+
+### 5. Доступ к веб-интерфейсу и API
+- **Web UI:** [http://localhost:8000/](http://localhost:8000/)
+- **Результаты аудита:** [http://localhost:8000/analyzed_2.html](http://localhost:8000/analyzed_2.html)
+- **Health Check:** `GET /api/v1/health`
+- **Swagger Docs:** `http://localhost:8000/docs`
+
+---
+
 ## 👥 Авторы
 Разработано в рамках Datathon 26 для ForteBank.
 Автор: [@yerarassyl](https://github.com/yerarassyl)
