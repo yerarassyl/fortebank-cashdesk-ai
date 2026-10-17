@@ -133,12 +133,99 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
 
   <!-- Player + Event details -->
   <div class="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
-    <div id="video" class="rounded-xl border border-slate-200 bg-white p-3">
-      <div class="relative aspect-video overflow-hidden rounded-lg bg-black">
-        <video id="mainVideo" controls class="h-full w-full object-contain">
+    <div id="video" class="rounded-xl border border-slate-200 bg-white p-3 flex flex-col justify-between">
+      <!-- Player Screen Viewport -->
+      <div id="playerScreenWrapper" class="relative aspect-video overflow-hidden rounded-lg bg-black group select-none">
+        <video id="mainVideo" playsinline class="h-full w-full object-contain cursor-pointer">
           <source id="videoSource" src="" type="video/mp4">
           Ваш браузер не поддерживает видео.
         </video>
+
+        <!-- CCTV Timestamp overlay (top-left) like in user screenshot -->
+        <div class="absolute top-3 left-3 flex items-center gap-2 bg-black/70 backdrop-blur-sm text-white/95 px-2.5 py-1 rounded text-xs font-mono tracking-wider z-10 pointer-events-none">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="cctvTimestamp">28-10-2025 10:44:23</span>
+        </div>
+
+        <!-- Big Center Play Button Overlay -->
+        <div id="bigPlayBtn" onclick="togglePlayPause()" class="absolute inset-0 flex items-center justify-center bg-black/25 transition-opacity duration-200 cursor-pointer">
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-[#910A38] text-white shadow-xl hover:scale-110 transition-transform">
+            <svg id="bigPlayIcon" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" class="translate-x-0.5"><path d="M5 3l14 9-14 9V3z"/></svg>
+          </div>
+        </div>
+
+        <!-- Bottom overlay control bar inside video -->
+        <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-3 pt-6 flex items-center justify-between text-white z-10 transition-opacity duration-200 opacity-90 group-hover:opacity-100">
+          <div class="flex items-center gap-3">
+            <button onclick="togglePlayPause()" class="hover:text-rose-300 transition-colors p-1" title="Воспроизведение / Пауза (Space)">
+              <svg id="playPauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+            </button>
+            <button onclick="skipTime(-5)" class="hover:text-rose-300 text-xs font-mono font-medium transition-colors" title="-5 секунд">−5s</button>
+            <button onclick="skipTime(5)" class="hover:text-rose-300 text-xs font-mono font-medium transition-colors" title="+5 секунд">+5s</button>
+            <div class="text-xs font-mono text-slate-200 ml-1">
+              <span id="videoCurrentTime" class="font-bold text-white">00:00</span> / <span id="videoTotalTime">00:00</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="speedBtn" onclick="cyclePlaybackSpeed()" class="rounded px-2 py-0.5 text-xs font-mono font-semibold bg-white/20 hover:bg-white/30 transition-colors" title="Скорость воспроизведения">1.0x</button>
+            <button onclick="toggleMute()" id="muteBtn" class="hover:text-rose-300 transition-colors p-1" title="Звук">
+              <svg id="muteIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            </button>
+            <button onclick="toggleFullscreen()" class="hover:text-rose-300 transition-colors p-1" title="На весь экран">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- INTERACTIVE TIMELINE WITH VIOLATION DOTS (EXACTLY AS SCREENSHOT) -->
+      <div class="mt-3 px-1">
+        <!-- Floating Hover Tooltip -->
+        <div class="relative w-full">
+          <div id="timelineHoverTooltip" class="absolute -top-7 hidden -translate-x-1/2 rounded bg-slate-900 px-2 py-0.5 text-[11px] font-mono font-semibold text-white shadow-lg pointer-events-none z-30 whitespace-nowrap border border-slate-700">00:00</div>
+          
+          <!-- Timeline Track Container -->
+          <div id="timelineContainer" class="relative h-6 flex items-center cursor-pointer select-none group" onclick="handleTimelineClick(event)" onmousemove="handleTimelineHover(event)" onmouseleave="hideTimelineHover()">
+            <!-- Rail -->
+            <div class="h-2 w-full rounded-full bg-slate-200 relative overflow-visible">
+              <!-- Active Progress Fill (Crimson) -->
+              <div id="timelineProgress" class="h-full rounded-full bg-[#910A38] relative" style="width: 0%;"></div>
+              
+              <!-- Playhead Scrubber Thumb -->
+              <div id="timelineThumb" class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white border-[3px] border-[#910A38] shadow-md transition-transform duration-75 group-hover:scale-125 z-20 pointer-events-none" style="left: 0%;"></div>
+
+              <!-- VIOLATION & EVENT MARKERS CONTAINER (DOTS) -->
+              <div id="timelineMarkersContainer" class="absolute inset-0 pointer-events-none z-10">
+                <!-- Dynamically populated violation dots -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Time Ticks & Labels below Track (00:00 ... 08:42 as in screenshot) -->
+        <div id="timelineTimeLabels" class="flex justify-between items-center text-[10px] sm:text-[11px] font-mono text-slate-400 mt-0.5 select-none px-0.5">
+          <span>00:00</span>
+          <span>--:--</span>
+        </div>
+
+        <!-- Manual Marker Actions & Legend Toolbar -->
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button onclick="promptAddMarker()" class="inline-flex items-center gap-1.5 rounded-md bg-[#910A38] px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:opacity-90 transition-opacity">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+              <span>Поставить точку нарушения (<span id="btnCurrentSec">00:00</span>)</span>
+            </button>
+            <button onclick="quickAddMarker('Customer Identification Failure')" class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors" title="Добавить точку: Не проверила удост.">+ Без проверки удост.</button>
+            <button onclick="quickAddMarker('Unauthorized Persons in Cash Area')" class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors" title="Добавить точку: Посторонний">+ Посторонний</button>
+            <button onclick="quickAddMarker('Open Safe Door Unattended')" class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors" title="Добавить точку: Сейф">+ Сейф/Деньги</button>
+            <button onclick="quickAddMarker('Leaving Cash Desk Unattended')" class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-colors" title="Добавить точку: Оставил стол">+ Оставил стол</button>
+          </div>
+          <div class="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
+            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#DC2626] border border-white shadow-sm ring-1 ring-red-400"></span> Точка нарушения</span>
+            <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#059669] border border-white shadow-sm"></span> Норма</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -588,11 +675,14 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     if (data.incidents.length > 0) {
       selectIncident(data.incidents[0], 0);
     }
+    renderTimelineMarkers();
+    updateTimelineLabels(data.durationSec);
   }
 
   function selectIncident(item, idx) {
     currentIncidentIdx = idx;
     currentIncident = item;
+    renderTimelineMarkers();
 
     if (jobData && jobData.incidents) {
       jobData.incidents.forEach((_, i) => {
@@ -640,10 +730,313 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
   function jumpToSec(sec) {
     const video = document.getElementById('mainVideo');
     if (video) {
-      video.currentTime = Math.max(0, sec - 1);
+      video.currentTime = Math.max(0, sec);
       video.play();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  }
+
+  // ==============================================================================
+  // CUSTOM PLAYER, INTERACTIVE TIMELINE & VIOLATION MARKERS
+  // ==============================================================================
+
+  function formatMMSS(sec) {
+    if (!sec || isNaN(sec)) return "00:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  const customVideo = document.getElementById('mainVideo');
+  const playPauseIcon = document.getElementById('playPauseIcon');
+  const bigPlayBtn = document.getElementById('bigPlayBtn');
+  const timelineProgress = document.getElementById('timelineProgress');
+  const timelineThumb = document.getElementById('timelineThumb');
+  const videoCurrentTime = document.getElementById('videoCurrentTime');
+  const videoTotalTime = document.getElementById('videoTotalTime');
+  const btnCurrentSec = document.getElementById('btnCurrentSec');
+  const cctvTimestamp = document.getElementById('cctvTimestamp');
+  const timelineMarkersContainer = document.getElementById('timelineMarkersContainer');
+  const timelineHoverTooltip = document.getElementById('timelineHoverTooltip');
+
+  let currentSpeedIdx = 2;
+  const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+  function togglePlayPause() {
+    if (!customVideo) return;
+    if (customVideo.paused || customVideo.ended) {
+      customVideo.play();
+    } else {
+      customVideo.pause();
+    }
+  }
+
+  function skipTime(delta) {
+    if (!customVideo) return;
+    const dur = customVideo.duration || (jobData && jobData.durationSec) || 0;
+    customVideo.currentTime = Math.max(0, Math.min(dur, customVideo.currentTime + delta));
+  }
+
+  function cyclePlaybackSpeed() {
+    if (!customVideo) return;
+    currentSpeedIdx = (currentSpeedIdx + 1) % speeds.length;
+    const s = speeds[currentSpeedIdx];
+    customVideo.playbackRate = s;
+    const speedBtn = document.getElementById('speedBtn');
+    if (speedBtn) speedBtn.innerText = `${s}x`;
+  }
+
+  function toggleMute() {
+    if (!customVideo) return;
+    customVideo.muted = !customVideo.muted;
+    const muteIcon = document.getElementById('muteIcon');
+    if (muteIcon) {
+      if (customVideo.muted) {
+        muteIcon.innerHTML = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>`;
+      } else {
+        muteIcon.innerHTML = `<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>`;
+      }
+    }
+  }
+
+  function toggleFullscreen() {
+    const wrapper = document.getElementById('playerScreenWrapper');
+    if (!document.fullscreenElement) {
+      if (wrapper.requestFullscreen) wrapper.requestFullscreen();
+      else if (wrapper.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+    }
+  }
+
+  function handleTimelineClick(e) {
+    const container = document.getElementById('timelineContainer');
+    if (!container || !customVideo) return;
+    const rect = container.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const dur = customVideo.duration || (jobData && jobData.durationSec) || 1;
+    customVideo.currentTime = pct * dur;
+  }
+
+  function handleTimelineHover(e) {
+    const container = document.getElementById('timelineContainer');
+    if (!container || !timelineHoverTooltip) return;
+    const rect = container.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const dur = customVideo.duration || (jobData && jobData.durationSec) || 0;
+    const hoverSec = pct * dur;
+
+    timelineHoverTooltip.style.left = `${pct * 100}%`;
+    timelineHoverTooltip.innerText = formatMMSS(hoverSec);
+    timelineHoverTooltip.classList.remove('hidden');
+  }
+
+  function hideTimelineHover() {
+    if (timelineHoverTooltip) timelineHoverTooltip.classList.add('hidden');
+  }
+
+  if (customVideo) {
+    customVideo.addEventListener('play', () => {
+      if (bigPlayBtn) bigPlayBtn.classList.add('opacity-0', 'pointer-events-none');
+      if (playPauseIcon) playPauseIcon.innerHTML = `<path d="M6 4h4v16H6zm8 0h4v16h-4z"/>`;
+    });
+
+    customVideo.addEventListener('pause', () => {
+      if (bigPlayBtn) bigPlayBtn.classList.remove('opacity-0', 'pointer-events-none');
+      if (playPauseIcon) playPauseIcon.innerHTML = `<path d="M5 3l14 9-14 9V3z"/>`;
+    });
+
+    customVideo.addEventListener('timeupdate', () => {
+      const cur = customVideo.currentTime || 0;
+      const dur = customVideo.duration || (jobData && jobData.durationSec) || 1;
+      const pct = (cur / dur) * 100;
+
+      if (timelineProgress) timelineProgress.style.width = `${pct}%`;
+      if (timelineThumb) timelineThumb.style.left = `${pct}%`;
+      if (videoCurrentTime) videoCurrentTime.innerText = formatMMSS(cur);
+      if (btnCurrentSec) btnCurrentSec.innerText = formatMMSS(cur);
+
+      if (cctvTimestamp) {
+        const d = new Date(1730105063000 + cur * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        cctvTimestamp.innerText = `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+    });
+
+    customVideo.addEventListener('loadedmetadata', () => {
+      const dur = customVideo.duration || (jobData && jobData.durationSec) || 0;
+      if (videoTotalTime) videoTotalTime.innerText = formatMMSS(dur);
+      updateTimelineLabels(dur);
+      renderTimelineMarkers();
+    });
+  }
+
+  function updateTimelineLabels(duration) {
+    const labelsContainer = document.getElementById('timelineTimeLabels');
+    if (!labelsContainer) return;
+    const dur = duration || (jobData && jobData.durationSec) || 0;
+    if (dur <= 0) return;
+
+    const count = 7;
+    let html = '';
+    for (let i = 0; i < count; i++) {
+      const s = (dur / (count - 1)) * i;
+      html += `<span>${formatMMSS(s)}</span>`;
+    }
+    labelsContainer.innerHTML = html;
+  }
+
+  function renderTimelineMarkers() {
+    if (!timelineMarkersContainer) return;
+    timelineMarkersContainer.innerHTML = '';
+    const dur = (customVideo && customVideo.duration > 0) ? customVideo.duration : (jobData && jobData.durationSec ? jobData.durationSec : 0);
+    if (dur <= 0) return;
+
+    if (jobData && jobData.incidents && jobData.incidents.length > 0) {
+      jobData.incidents.forEach((inc, idx) => {
+        const t = parseFloat(inc.timeSec) || 0;
+        const pct = Math.max(0.5, Math.min(99.5, (t / dur) * 100));
+
+        const dot = document.createElement('div');
+        const isActive = (idx === currentIncidentIdx);
+        dot.className = `absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-[#DC2626] border-2 border-white shadow-md ring-2 ring-red-400/80 hover:scale-150 transition-all pointer-events-auto cursor-pointer z-10 ${isActive ? 'ring-4 ring-rose-500 scale-125' : ''}`;
+        dot.style.left = `${pct}%`;
+        dot.title = `Инцидент #${idx + 1} (${formatMMSS(t)}): ${inc.type}`;
+
+        dot.onmouseenter = () => {
+          if (timelineHoverTooltip) {
+            timelineHoverTooltip.style.left = `${pct}%`;
+            timelineHoverTooltip.innerText = `● #${idx + 1} ${formatMMSS(t)}: ${inc.type}`;
+            timelineHoverTooltip.classList.remove('hidden');
+          }
+        };
+        dot.onmouseleave = () => {
+          hideTimelineHover();
+        };
+        dot.onclick = (e) => {
+          e.stopPropagation();
+          jumpToSec(t);
+          selectIncident(inc, idx);
+        };
+
+        timelineMarkersContainer.appendChild(dot);
+      });
+    } else {
+      [0.25, 0.5, 0.75].forEach((ratio) => {
+        const dot = document.createElement('div');
+        dot.className = `absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-[#059669] border border-white shadow-sm ring-1 ring-emerald-300 pointer-events-auto cursor-pointer z-10`;
+        dot.style.left = `${ratio * 100}%`;
+        dot.title = `Норма (${formatMMSS(dur * ratio)}): регламент соблюден`;
+        dot.onclick = (e) => {
+          e.stopPropagation();
+          jumpToSec(dur * ratio);
+        };
+        timelineMarkersContainer.appendChild(dot);
+      });
+    }
+  }
+
+  function captureVideoFrame() {
+    if (!customVideo) return "";
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = customVideo.videoWidth || 960;
+      canvas.height = customVideo.videoHeight || 540;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(customVideo, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+      console.warn("Canvas capture error:", e);
+      return "";
+    }
+  }
+
+  function quickAddMarker(violationType) {
+    if (!jobData) return;
+    const curSec = Math.round((customVideo.currentTime || 0) * 10) / 10;
+    const frameData = captureVideoFrame();
+
+    const legalMap = {
+      "Customer Identification Failure": {
+        title: "Постановление Правления НБРК от 29.11.2019 № 231, п. 19 пп. 1), п. 31 пп. 1) / Закон РК о ПОД/ФТ, ст. 5",
+        quote: "Кассовый работник банка проводит визуальную идентификацию клиента по данным документа, удостоверяющего личность, либо данным, подтверждающим личность клиента посредством сервиса цифровых документов.",
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
+      },
+      "Unauthorized Persons in Cash Area": {
+        title: "Постановление Правления НБРК от 24.02.2020 № 14, п. 8; Постановление НБРК № 231, п. 75",
+        quote: "Кассовый узел подлежит изолированию от других производственных и служебных помещений одним закрывающимся служебным входом.",
+        url: "https://adilet.zan.kz/rus/docs/V2000020075"
+      },
+      "Open Safe Door Unattended": {
+        title: "Постановление Правления НБРК от 29.11.2019 № 231, п. 20, п. 80",
+        quote: "Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте кассового работника, закрывающихся на ключ.",
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
+      },
+      "Leaving Cash Desk Unattended": {
+        title: "Постановление Правления НБРК от 29.11.2019 № 231, п. 20, п. 22",
+        quote: "Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента.",
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
+      }
+    };
+
+    const cit = legalMap[violationType] || {
+      title: "Постановление Правления НБРК от 29.11.2019 № 231",
+      quote: "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания.",
+      url: "https://adilet.zan.kz/rus/docs/V1900019680"
+    };
+
+    if (!jobData.incidents) jobData.incidents = [];
+
+    const newIdx = jobData.incidents.length;
+    const newInc = {
+      id: newIdx + 1,
+      timeSec: curSec,
+      type: violationType,
+      observation: `Ручная отметка инспектора на ${curSec}s: зафиксировано нарушение (${violationType}).`,
+      frame: frameData,
+      collage: frameData,
+      sequence_frames: [{
+        index: 5,
+        offset_sec: 0.0,
+        timestamp_sec: curSec,
+        label: `★ МОМЕНТ (${curSec}с)`,
+        tag: "Момент",
+        is_moment: true,
+        image_data: frameData
+      }],
+      citation: cit,
+      status: "Violation"
+    };
+
+    jobData.incidents.push(newInc);
+    jobData.incidents.sort((a, b) => a.timeSec - b.timeSec);
+    jobData.incidents.forEach((item, i) => item.id = i + 1);
+
+    jobData.violationsCount = jobData.incidents.length;
+    jobData.verdict = "violation";
+
+    renderData(jobData);
+    renderTimelineMarkers();
+
+    const targetIdx = jobData.incidents.findIndex(item => item === newInc);
+    if (targetIdx !== -1) {
+      selectIncident(newInc, targetIdx);
+    }
+  }
+
+  function promptAddMarker() {
+    const curSec = Math.round(((customVideo && customVideo.currentTime) || 0) * 10) / 10;
+    const choice = prompt(`Укажите тип нарушения для отметки на ${curSec} сек:\n\n1 - Не проверила удостоверение личности\n2 - Посторонний человек в кассе\n3 - Сейф / ценности без присмотра\n4 - Оставление рабочего места\n\nВведите цифру 1-4 или название:`, "1");
+    if (!choice) return;
+
+    let tName = "Customer Identification Failure";
+    if (choice === "1") tName = "Customer Identification Failure";
+    else if (choice === "2") tName = "Unauthorized Persons in Cash Area";
+    else if (choice === "3") tName = "Open Safe Door Unattended";
+    else if (choice === "4") tName = "Leaving Cash Desk Unattended";
+    else tName = choice;
+
+    quickAddMarker(tName);
   }
 
   // ==============================================================================
