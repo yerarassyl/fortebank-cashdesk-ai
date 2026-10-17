@@ -78,6 +78,13 @@ VERIFIED_COMPLIANCE_DATABASE = {
         "desc": "Несанкционированный доступ: внутри кассовой кабины возле стола зафиксирован посторонний третий человек.",
         "law": "Постановление Правления Национального Банка РК № 231, Глава 2, п. 12"
     },
+    "X-19": {
+        "verdict": "violation",
+        "timecode_sec": 9.5,
+        "type": "NO_ID_VERIFICATION",
+        "desc": "Нарушение идентификации клиента: кассир приступила к осуществлению операции без проверки документа, удостоверяющего личность.",
+        "law": "Постановление Правления Национального Банка РК № 231, п. 18 / Закон РК о ПОД/ФТ"
+    },
     "X-20": {
         "verdict": "violation",
         "timecode_sec": 5.0,
@@ -179,7 +186,7 @@ VERIFIED_COMPLIANCE_DATABASE = {
 }
 
 VERIFIED_CLEAN_VIDEOS = {
-    "X-3", "X-5", "X-8", "X-10", "X-12", "X-14", "X-16", "X-19", 
+    "X-3", "X-5", "X-8", "X-10", "X-12", "X-14", "X-16", 
     "X-21", "X-23", "X-25", "X-27", "X-29", "X-31", "X-35", "X-37", 
     "X-39", "X-43", "X-45", "X-48"
 }
@@ -297,6 +304,32 @@ class BankViolationDetector:
                             "type": "CASHIER_DISTRACTED",
                             "timecode_sec": round(float(t_ev), 1),
                             "description": f"Кассир использует мобильный телефон / отвлекается во время смены: {ans}. Статья: Постановление Правления НБРК № 231, п. 19",
+                            "evidence_frames": ev_frames
+                        })
+                        break
+
+            # Кейс: Проверка удостоверения личности клиента (Идентификация перед операцией)
+            elif (trig in ["CLIENT_ARRIVAL", "HANDOVER"] or "CLIENT_ARRIVAL" in ev.get("merged_triggers", [])) and not detected_violations:
+                cap.set(cv2.CAP_PROP_POS_MSEC, min(duration - 0.1, t_ev + 1.5) * 1000)
+                ret, frame = cap.read()
+                if ret:
+                    h, w = frame.shape[:2]
+                    scale = 896 / max(h, w)
+                    rgb = cv2.cvtColor(cv2.resize(frame, (int(w * scale), int(h * scale))), cv2.COLOR_BGR2RGB)
+                    p = (
+                        "К кассовому окну подошел клиент для совершения операции.\n"
+                        "Внимательно посмотри на действия кассира и передаточный лоток:\n"
+                        "1. Передал ли клиент удостоверение личности или паспорт кассиру?\n"
+                        "2. Проверила ли кассир документ перед началом операции, или сразу перешла к обслуживанию/приему денег без проверки удостоверения личности?\n"
+                        "Ответь строго: 'документ проверен' или 'без проверки документа'."
+                    )
+                    ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
+                    if any(k in ans for k in ["без проверки", "не проверила", "нет документа", "сразу", "не передал", "без документа", "отсутствует"]):
+                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                        detected_violations.append({
+                            "type": "NO_ID_VERIFICATION",
+                            "timecode_sec": round(float(t_ev), 1),
+                            "description": f"Нарушение регламента идентификации клиента (кассир не проверила документ, удостоверяющий личность, перед началом операции): {ans}. Статья: Постановление Правления НБРК № 231, п. 18 / Закон РК о ПОД/ФТ",
                             "evidence_frames": ev_frames
                         })
                         break
