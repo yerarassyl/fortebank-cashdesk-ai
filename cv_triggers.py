@@ -94,7 +94,13 @@ class PoseEventDetector:
         raw_events = []
         prev_confirmed_count = None
         cashier_id = None
-        hand_to_mouth_counter = 0
+
+        # Состояния гистерезиса (State Transition Flags)
+        in_handover = False
+        handover_hold_count = 0
+        in_hand_to_mouth = False
+        mouth_hold_count = 0
+        cashier_is_standing = False
 
         # Аудит начала смены / чистоты стола в первые секунды
         raw_events.append({
@@ -179,8 +185,8 @@ class PoseEventDetector:
                     cashier_tr.is_cashier = True
                     cashier_id = cashier_tr.track_id
 
-            # Смещение кассира со стула (без полигонов зон, чисто по смещению тела)
-            if cashier_id in tracks and tracks[cashier_id].confirmed:
+            # 1. Смещение кассира со стула (Edge: ровно 1 раз)
+            if cashier_id in tracks and tracks[cashier_id].confirmed and not cashier_is_standing:
                 ctr = tracks[cashier_id]
                 shift = np.hypot(ctr.center[0] - ctr.initial_center[0], ctr.center[1] - ctr.initial_center[1])
                 body_h = ctr.box[3] - ctr.box[1]
@@ -196,9 +202,9 @@ class PoseEventDetector:
                             "3. Не оставлены ли деньги без присмотра на столе?"
                         )
                     })
-                    ctr.initial_center = ctr.center
+                    cashier_is_standing = True
 
-            # Изменение количества стабильно подтвержденных людей
+            # 2. Изменение количества стабильно подтвержденных людей
             confirmed_tracks = [t for t in tracks.values() if t.confirmed]
             conf_count = len(confirmed_tracks)
 
@@ -241,40 +247,42 @@ class PoseEventDetector:
 
             prev_confirmed_count = conf_count
 
-            # Рука у лица (прием пищи / питье на рабочем месте)
+            # 3. Рука у лица с гистерезисом (вход: ratio < 1.20, выход: ratio > 1.45)
+            min_face_ratio = 999.0
             for tr in confirmed_tracks:
                 if tr.keypoints is not None and len(tr.keypoints) > 10:
                     kp = tr.keypoints
                     if kp[0][2] > 0.3:
                         sh_w = np.linalg.norm(kp[5][:2] - kp[6][:2]) if (kp[5][2] > 0.3 and kp[6][2] > 0.3) else 0
-                        w_dists = []
-                        if kp[9][2] > 0.25:
-                            w_dists.append(np.linalg.norm(kp[0][:2] - kp[9][:2]))
-                        if kp[10][2] > 0.25:
-                            w_dists.append(np.linalg.norm(kp[0][:2] - kp[10][:2]))
+                        w_dists = [np.linalg.norm(kp[0][:2] - kp[i][:2]) for i in [9, 10] if kp[i][2] > 0.25]
+                        if w_dists and sh_w > 0:
+                            min_face_ratio = min(min_face_ratio, min(w_dists) / sh_w)
 
-                        body_h = tr.box[3] - tr.box[1]
-                        is_near_face = False
-                        if w_dists:
-                            min_wd = min(w_dists)
-                            if sh_w > 0 and (min_wd / sh_w) < 1.3:
-                                is_near_face = True
-                            elif body_h > 0 and (min_wd / body_h) < 0.35:
-                                is_near_face = True
+            if not in_hand_to_mouth:
+                if min_face_ratio < 1.20:
+                    mouth_hold_count += 1
+                    if mouth_hold_count >= 2:
+                        raw_events.append({
+                            "timecode_sec": round(sec, 1),
+                            "trigger": "HAND_TO_MOUTH",
+                            "context": "alone",
+                            "prompt_focus": "Кассир поднесла руку к лицу/рту. Проверь: пьет ли кассир воду/напиток или принимает пищу на рабочем месте?"
+                        })
+                        in_hand_to_mouth = True
+                        mouth_hold_count = 0
+                else:
+                    mouth_hold_count = 0
+            else:
+                if min_face_ratio > 1.45:
+                    mouth_hold_count += 1
+                    if mouth_hold_count >= 2:
+                        in_hand_to_mouth = False
+                        mouth_hold_count = 0
+                else:
+                    mouth_hold_count = 0
 
-                        if is_near_face:
-                            hand_to_mouth_counter += 1
-                            if hand_to_mouth_counter == 2:
-                                raw_events.append({
-                                    "timecode_sec": round(sec, 1),
-                                    "trigger": "HAND_TO_MOUTH",
-                                    "context": "alone",
-                                    "prompt_focus": "Кассир поднесла руку к лицу/рту. Проверь: пьет ли кассир воду/напиток или принимает пищу на рабочем месте?"
-                                })
-                        else:
-                            hand_to_mouth_counter = max(0, hand_to_mouth_counter - 1)
-
-            # Передача денег (сближение рук между кассиром и клиентом)
+            # 4. Передача денег с гистерезисом (вход: dist < 0.12*w, выход: dist > 0.18*w)
+            min_hand_dist = 9999.0
             if len(confirmed_tracks) >= 2:
                 t1, t2 = confirmed_tracks[0], confirmed_tracks[1]
                 if t1.keypoints is not None and t2.keypoints is not None:
@@ -282,19 +290,35 @@ class PoseEventDetector:
                     if len(kp1) > 10 and len(kp2) > 10:
                         w1 = [kp1[9][:2], kp1[10][:2]]
                         w2 = [kp2[9][:2], kp2[10][:2]]
-                        min_w_dist = min(np.linalg.norm(a - b) for a in w1 for b in w2)
-                        if min_w_dist < (width * 0.14):
-                            raw_events.append({
-                                "timecode_sec": round(sec, 1),
-                                "trigger": "HANDOVER",
-                                "context": "client",
-                                "prompt_focus": (
-                                    "Кассир и клиент осуществляют передачу ценностей через стол. Проверь:\n"
-                                    "1. Вернула ли кассир сдачу/деньги клиенту полностью через передаточный лоток?\n"
-                                    "2. Были ли проверены купюры на счетной машинке или переданы напрямую из рук в руки?\n"
-                                    "3. Не смешала ли кассир фальшивые/отбракованные купюры с нормальными?"
-                                )
-                            })
+                        min_hand_dist = min(np.linalg.norm(a - b) for a in w1 for b in w2)
+
+            if not in_handover:
+                if min_hand_dist < (width * 0.12):
+                    handover_hold_count += 1
+                    if handover_hold_count >= 2:
+                        raw_events.append({
+                            "timecode_sec": round(sec, 1),
+                            "trigger": "HANDOVER",
+                            "context": "client",
+                            "prompt_focus": (
+                                "Кассир и клиент осуществляют передачу ценностей через стол. Проверь:\n"
+                                "1. Вернула ли кассир сдачу/деньги клиенту полностью через передаточный лоток?\n"
+                                "2. Были ли проверены купюры на счетной машинке или переданы напрямую из рук в руки?\n"
+                                "3. Не смешала ли кассир фальшивые/отбракованные купюры с нормальными?"
+                            )
+                        })
+                        in_handover = True
+                        handover_hold_count = 0
+                else:
+                    handover_hold_count = 0
+            else:
+                if min_hand_dist > (width * 0.18):
+                    handover_hold_count += 1
+                    if handover_hold_count >= 2:
+                        in_handover = False
+                        handover_hold_count = 0
+                else:
+                    handover_hold_count = 0
 
         # Дебаунс событий
         return self._debounce_events(raw_events)
