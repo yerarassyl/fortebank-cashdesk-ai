@@ -9,13 +9,21 @@
 </head>
 <body class="min-h-screen text-slate-900">
 
-<header class="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-200 bg-white px-4 py-3 md:px-6">
-  <div class="flex items-center gap-2 text-xl font-bold text-[#910A38]">
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V9M9 21V9M15 21V9M19 21V9M3 9l9-6 9 6"/></svg>
-    ForteBank
-  </div>
-  <div class="hidden h-8 w-px bg-slate-200 md:block"></div>
-  <h1 class="text-base md:text-xl"><span class="font-bold">Forte AI</span> <span class="text-slate-700">— Cashier Discipline Analytics</span></h1>
+<header class="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-200 bg-white px-4 py-2.5 md:px-6">
+  <!-- Логотип ForteBank (кликабельный, возвращает на домашнюю страницу) -->
+  <a href="/" class="flex items-center gap-2 transition-transform hover:scale-[1.02] active:scale-[0.98]" title="ForteBank — На главную страницу">
+    <img src="/fortebank_logo.svg" alt="ForteBank" class="h-8 md:h-9 w-auto object-contain" />
+  </a>
+  <div class="hidden h-7 w-px bg-slate-200 md:block"></div>
+  <!-- Логотип Forte AI (кликабельный, возвращает на домашнюю страницу) -->
+  <a href="/" class="flex items-center gap-2 group transition-transform hover:scale-[1.02] active:scale-[0.98]" title="Forte AI — На главную страницу">
+    <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#910A38] to-[#be123c] text-white shadow-xs font-black text-xs tracking-tighter">
+      AI
+    </div>
+    <div class="text-base md:text-lg font-bold text-slate-900 leading-none">
+      <span class="text-[#910A38] group-hover:underline">Forte AI</span> <span class="text-slate-600 font-normal text-xs md:text-sm">— Cashier Discipline Analytics</span>
+    </div>
+  </a>
   <div class="ml-auto flex flex-wrap items-center gap-3 text-xs">
     <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 font-medium text-[#059669]"><span class="h-2 w-2 rounded-full bg-[#059669]"></span>Offline Engine Active</span>
     <div class="leading-tight"><div class="text-slate-500">API Status</div><div id="apiStatus" class="flex items-center gap-1 font-medium text-emerald-600"><span class="h-2 w-2 rounded-full bg-[#059669]"></span>Online</div></div>
