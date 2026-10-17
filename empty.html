@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forte AI — Cashier Discipline Analytics</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>body{background:#F9FAFB;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}</style>
+</head>
+<body class="min-h-screen text-slate-900">
+
+<header class="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-200 bg-white px-4 py-3 md:px-6">
+  <div class="flex items-center gap-2 text-xl font-bold text-[#910A38]">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V9M9 21V9M15 21V9M19 21V9M3 9l9-6 9 6"/></svg>
+    ForteBank
+  </div>
+  <div class="hidden h-8 w-px bg-slate-200 md:block"></div>
+  <h1 class="text-base md:text-xl"><span class="font-bold">Forte AI</span> <span class="text-slate-700">— Cashier Discipline Analytics</span></h1>
+  <div class="ml-auto flex flex-wrap items-center gap-3 text-xs">
+    <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 font-medium text-[#059669]"><span class="h-2 w-2 rounded-full bg-[#059669]"></span>Offline Engine Active</span>
+    <div class="leading-tight"><div class="text-slate-500">API Status</div><div id="apiStatus" class="flex items-center gap-1 font-medium text-emerald-600"><span class="h-2 w-2 rounded-full bg-[#059669]"></span>Online</div></div>
+    <div class="leading-tight"><div class="font-semibold">Almaty Branch #12</div><div class="text-slate-500">Branch ID: 0123</div></div>
+    <span class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-white">AT</span>
+  </div>
+</header>
+
+<main class="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
+  <div class="grid gap-4 xl:grid-cols-3">
+
+    <!-- Upload zone -->
+    <label for="file" id="dropLabel" class="flex min-h-[340px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-white p-8 text-center transition-colors hover:border-[#910A38] hover:bg-rose-50/40 xl:col-span-2">
+      <div id="uploadContent" class="flex flex-col items-center">
+        <svg class="text-[#910A38]" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
+        <h2 class="mt-3 text-2xl font-semibold">Upload Video</h2>
+        <p class="mt-2 text-slate-600">Drag &amp; drop your .mov file here</p>
+        <p class="text-sm text-slate-500">or click to browse</p>
+        <span class="mt-5 rounded-full bg-[#910A38] px-7 py-2.5 text-sm font-medium text-white hover:opacity-90">Select File</span>
+        <p class="mt-4 text-xs text-slate-500">Supported format: .mov, .mp4 | Max size: 2 GB</p>
+      </div>
+
+      <!-- Loading Indicator -->
+      <div id="loadingContent" class="hidden flex-col items-center">
+        <svg class="animate-spin text-[#910A38]" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+        <h3 class="mt-4 text-lg font-semibold text-slate-800">Загрузка и локальный анализ...</h3>
+        <p class="text-xs text-slate-500 mt-1">Отправка файла на сервер FastAPI (http://localhost:8000)</p>
+      </div>
+
+      <input id="file" type="file" accept=".mov,.mp4" class="hidden">
+    </label>
+
+    <!-- Ready card -->
+    <div class="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-center">
+      <div class="flex h-16 w-16 items-center justify-center rounded-full bg-rose-50 text-[#910A38]">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 13c0 5-3.5 7.5-7.7 8.9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+      </div>
+      <h3 class="mt-4 text-lg font-semibold">Готов к анализу</h3>
+      <p class="mt-2 max-w-xs text-sm text-slate-600">Обработка выполняется полностью локально. Видео и результаты не передаются в облако.</p>
+      <span class="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-[#059669]">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Offline Engine Active
+      </span>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600">
+    <svg class="shrink-0 text-slate-400" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18M17 3v18M3 12h18"/></svg>
+    Загрузите видеозапись кассовой смены для запуска анализа кассовой дисциплины
+  </div>
+</main>
+
+<script>
+  const fileInput = document.getElementById('file');
+  const dropLabel = document.getElementById('dropLabel');
+  const uploadContent = document.getElementById('uploadContent');
+  const loadingContent = document.getElementById('loadingContent');
+
+  // Drag and drop support
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropLabel.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropLabel.classList.add('border-[#910A38]', 'bg-rose-50/50');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropLabel.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropLabel.classList.remove('border-[#910A38]', 'bg-rose-50/50');
+    });
+  });
+
+  dropLabel.addEventListener('drop', (e) => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleUpload(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleUpload(e.target.files[0]);
+    }
+  });
+
+  async function handleUpload(file) {
+    if (!file) return;
+
+    uploadContent.classList.add('hidden');
+    loadingContent.classList.remove('hidden');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/v1/analyze', {
+        method: 'POST',
+        body: formData
+      });
+      if (!res.ok) {
+        throw new Error(`Ошибка сервера: ${res.status}`);
+      }
+      const data = await res.json();
+      
+      // Перенаправляем на страницу результатов
+      window.location.href = `analyzed_2.html?job_id=${data.job_id}`;
+    } catch (err) {
+      alert('Ошибка обработки: ' + err.message);
+      uploadContent.classList.remove('hidden');
+      loadingContent.classList.add('hidden');
+    }
+  }
+</script>
+</body>
+</html>

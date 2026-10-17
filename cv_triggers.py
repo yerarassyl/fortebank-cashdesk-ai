@@ -76,9 +76,12 @@ class PoseEventDetector:
                     break
             if model_path is None:
                 model_path = "yolo11m-pose.pt"
-        print(f"[PoseEventDetector] Загрузка YOLO Pose: {model_path}...")
+        print(f"[PoseEventDetector] Загрузка YOLO Pose: {model_path} (Half-Precision FP16)...")
         self.model = YOLO(model_path)
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        if "cuda" in str(self.device):
+            self.model.to(self.device)
+            self.model.model.half()
 
     def detect_video_events(self, video_path, step_frames=5, batch_size=16, min_stable_sec=1.3, max_lost_sec=1.0, cover_radius_sec=10.0):
         """
@@ -159,8 +162,9 @@ class PoseEventDetector:
             for b_idx, b in enumerate(boxes):
                 cx = (b[0] + b[2]) / 2
                 cy = (b[1] + b[3]) / 2
-                # Отсечение людей в смежном помещении/коридоре за стеклянной перегородкой (слева)
-                if cx < (width * 0.28):
+                # Отсечение людей в смежном помещении/коридоре за стеклянной перегородкой (слева вдали)
+                # Человек внутри кабинета имеет h >= 220 и y2 >= 410 (стоит на полу кабинета)
+                if cx < (width * 0.32) and ((b[3] - b[1]) < 220 or b[3] < 410):
                     continue
                 box_diag = np.hypot(b[2] - b[0], b[3] - b[1])
                 match_threshold = max(80, box_diag * 0.7)
