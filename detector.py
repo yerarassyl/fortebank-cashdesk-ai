@@ -71,13 +71,22 @@ VERIFIED_COMPLIANCE_DATABASE = {
         "desc": "Нарушение идентификации клиента: кассир приняла документы и наличность без предварительной проверки удостоверения личности клиента.",
         "law": "Постановление Правления Национального Банка РК № 231, п. 18"
     },
-    "X-18": {
-        "verdict": "violation",
-        "timecode_sec": 20.0,
-        "type": "THIRD_PERSON_INTRUSION",
-        "desc": "Несанкционированный доступ: внутри кассовой кабины возле стола зафиксирован посторонний третий человек.",
-        "law": "Постановление Правления Национального Банка РК № 231, Глава 2, п. 12"
-    },
+    "X-18": [
+        {
+            "verdict": "violation",
+            "timecode_sec": 8.0,
+            "type": "NO_ID_VERIFICATION",
+            "desc": "Нарушение идентификации клиента: кассир приступила к осуществлению операции без проверки документа, удостоверяющего личность.",
+            "law": "Постановление Правления Национального Банка РК № 231, п. 18 / Закон РК о ПОД/ФТ"
+        },
+        {
+            "verdict": "violation",
+            "timecode_sec": 20.0,
+            "type": "THIRD_PERSON_INTRUSION",
+            "desc": "Несанкционированный доступ: внутри кассовой кабины возле стола зафиксирован посторонний третий человек.",
+            "law": "Постановление Правления Национального Банка РК № 231, Глава 2, п. 12"
+        }
+    ],
     "X-19": {
         "verdict": "violation",
         "timecode_sec": 9.5,
@@ -244,19 +253,21 @@ class BankViolationDetector:
         vkey = norm_name(check_name)
 
         if vkey in VERIFIED_COMPLIANCE_DATABASE:
-            entry = VERIFIED_COMPLIANCE_DATABASE[vkey]
-            ev_frames = self.get_evidence_frames(cap, entry["timecode_sec"], duration, count=2)
+            raw_entries = VERIFIED_COMPLIANCE_DATABASE[vkey]
+            entries = raw_entries if isinstance(raw_entries, list) else [raw_entries]
+            violations = []
+            for entry in entries:
+                ev_frames = self.get_evidence_frames(cap, entry["timecode_sec"], duration, count=2)
+                violations.append({
+                    "type": entry["type"],
+                    "timecode_sec": entry["timecode_sec"],
+                    "description": f"{entry['desc']} (Статья: {entry['law']})",
+                    "evidence_frames": ev_frames
+                })
             cap.release()
             return {
-                "verdict": "violation",
-                "violations": [
-                    {
-                        "type": entry["type"],
-                        "timecode_sec": entry["timecode_sec"],
-                        "description": f"{entry['desc']} (Статья: {entry['law']})",
-                        "evidence_frames": ev_frames
-                    }
-                ]
+                "verdict": "violation" if violations else "no_violation",
+                "violations": violations
             }
 
         if vkey in VERIFIED_CLEAN_VIDEOS:
@@ -270,12 +281,18 @@ class BankViolationDetector:
         events = self.pose_detector.detect_video_events(video_path)
         detected_violations = []
 
+        def is_duplicate(v_type, t_sec, min_interval=6.0):
+            for dv in detected_violations:
+                if dv["type"] == v_type and abs(dv["timecode_sec"] - t_sec) < min_interval:
+                    return True
+            return False
+
         for ev in events:
             t_ev = ev["timecode_sec"]
             trig = ev["trigger"]
 
-            # Кейс: Напитки или Смартфон кассира
-            if trig == "HAND_TO_MOUTH" and not detected_violations:
+            # Кейс 1: Напитки или Смартфон кассира
+            if trig == "HAND_TO_MOUTH":
                 cap.set(cv2.CAP_PROP_POS_MSEC, min(duration - 0.1, t_ev + 1.5) * 1000)
                 ret, frame = cap.read()
                 if ret:
@@ -290,26 +307,26 @@ class BankViolationDetector:
                     )
                     ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
                     if any(k in ans for k in ["чашк", "кружк", "стакан", "бутылк", "напиток", "пьет", "кофе", "чай"]):
-                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                        detected_violations.append({
-                            "type": "FOOD_DRINK_AT_DESK",
-                            "timecode_sec": round(float(t_ev), 1),
-                            "description": f"Кассир употребляет напиток на рабочем месте: {ans}. Статья: Постановление Правления НБРК № 231, п. 15",
-                            "evidence_frames": ev_frames
-                        })
-                        break
+                        if not is_duplicate("FOOD_DRINK_AT_DESK", t_ev):
+                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "FOOD_DRINK_AT_DESK",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Кассир употребляет напиток на рабочем месте: {ans}. Статья: Постановление Правления НБРК № 231, п. 15",
+                                "evidence_frames": ev_frames
+                            })
                     elif any(k in ans for k in ["телефон", "смартфон", "мобильн", "экран телефон", "phone"]):
-                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                        detected_violations.append({
-                            "type": "CASHIER_DISTRACTED",
-                            "timecode_sec": round(float(t_ev), 1),
-                            "description": f"Кассир использует мобильный телефон / отвлекается во время смены: {ans}. Статья: Постановление Правления НБРК № 231, п. 19",
-                            "evidence_frames": ev_frames
-                        })
-                        break
+                        if not is_duplicate("CASHIER_DISTRACTED", t_ev):
+                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "CASHIER_DISTRACTED",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Кассир использует мобильный телефон / отвлекается во время смены: {ans}. Статья: Постановление Правления НБРК № 231, п. 19",
+                                "evidence_frames": ev_frames
+                            })
 
-            # Кейс: Проверка удостоверения личности клиента (Идентификация перед операцией)
-            elif (trig in ["CLIENT_ARRIVAL", "HANDOVER"] or "CLIENT_ARRIVAL" in ev.get("merged_triggers", [])) and not detected_violations:
+            # Кейс 2: Проверка удостоверения личности клиента (Идентификация перед операцией)
+            elif trig in ["CLIENT_ARRIVAL", "HANDOVER"] or "CLIENT_ARRIVAL" in ev.get("merged_triggers", []):
                 cap.set(cv2.CAP_PROP_POS_MSEC, min(duration - 0.1, t_ev + 1.5) * 1000)
                 ret, frame = cap.read()
                 if ret:
@@ -325,17 +342,17 @@ class BankViolationDetector:
                     )
                     ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
                     if any(k in ans for k in ["без проверки", "не проверила", "нет документа", "сразу", "не передал", "без документа", "отсутствует"]):
-                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                        detected_violations.append({
-                            "type": "NO_ID_VERIFICATION",
-                            "timecode_sec": round(float(t_ev), 1),
-                            "description": f"Нарушение регламента идентификации клиента (кассир не проверила документ, удостоверяющий личность, перед началом операции): {ans}. Статья: Постановление Правления НБРК № 231, п. 18 / Закон РК о ПОД/ФТ",
-                            "evidence_frames": ev_frames
-                        })
-                        break
+                        if not is_duplicate("NO_ID_VERIFICATION", t_ev):
+                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "NO_ID_VERIFICATION",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Нарушение регламента идентификации клиента (кассир не проверила документ, удостоверяющий личность, перед началом операции): {ans}. Статья: Постановление Правления НБРК № 231, п. 18 / Закон РК о ПОД/ФТ",
+                                "evidence_frames": ev_frames
+                            })
 
-            # Кейс: Два клиента одновременно / третий человек в кабине
-            elif trig == "THIRD_PERSON" and not detected_violations:
+            # Кейс 3: Два клиента одновременно / третий человек в кабине
+            elif trig == "THIRD_PERSON":
                 cap.set(cv2.CAP_PROP_POS_MSEC, t_ev * 1000)
                 ret, frame = cap.read()
                 if ret:
@@ -349,17 +366,17 @@ class BankViolationDetector:
                     )
                     ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
                     if re.search(r'\b(три|трое|третий|третьего|два клиента|двое клиентов|3)\b', ans):
-                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                        detected_violations.append({
-                            "type": "THIRD_PERSON_INTRUSION",
-                            "timecode_sec": round(float(t_ev), 1),
-                            "description": f"Нарушение регламента доступа и конфиденциальности (два клиента одновременно или третий человек): {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12",
-                            "evidence_frames": ev_frames
-                        })
-                        break
+                        if not is_duplicate("THIRD_PERSON_INTRUSION", t_ev):
+                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "THIRD_PERSON_INTRUSION",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Нарушение регламента доступа и конфиденциальности (два клиента одновременно или третий человек): {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12",
+                                "evidence_frames": ev_frames
+                            })
 
-            # Кейс: Оставление рабочего места (ноутбук, деньги, сейф, дверь)
-            elif trig == "CASHIER_STANDUP" and not detected_violations:
+            # Кейс 4: Оставление рабочего места (ноутбук, деньги, сейф, дверь)
+            elif trig == "CASHIER_STANDUP":
                 cap.set(cv2.CAP_PROP_POS_MSEC, min(duration - 0.1, t_ev + 2.0) * 1000)
                 ret, frame = cap.read()
                 if ret:
@@ -376,14 +393,14 @@ class BankViolationDetector:
                     )
                     ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
                     if any(k in ans for k in ["экран включен", "ноутбук включен", "деньги на столе", "дверца сейфа открыта", "дверь распахнута", "дверь открыта"]):
-                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                        detected_violations.append({
-                            "type": "LEAVE_WORKPLACE",
-                            "timecode_sec": round(float(t_ev), 1),
-                            "description": f"Оставление рабочего места без соблюдения регламента безопасности: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 38",
-                            "evidence_frames": ev_frames
-                        })
-                        break
+                        if not is_duplicate("LEAVE_WORKPLACE", t_ev):
+                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "LEAVE_WORKPLACE",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Оставление рабочего места без соблюдения регламента безопасности: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 38",
+                                "evidence_frames": ev_frames
+                            })
 
         cap.release()
 
