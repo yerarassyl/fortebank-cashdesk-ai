@@ -46,22 +46,26 @@ if os.path.exists(LAWS_FILE):
 else:
     LAWS_DB = {}
 
-# Сопоставление внутренних типов детектора с разделами laws.json
+# Сопоставление внутренних типов детектора с каноническими типами из laws_database_json.md
 LAW_TYPE_MAPPING = {
-    "CLIENT_DESK_ACCESS": "Bypassing Cash Tray",
-    "NO_ID_VERIFICATION": "Customer Identification Failure",
-    "NO_ID_CHECK": "Customer Identification Failure",
-    "UNLOCKED_SAFE": "Open Safe Door Unattended",
+    "CLIENT_DESK_ACCESS": "Bypassing Security Pass Tray",
+    "NO_ID_VERIFICATION": "Premature Cash Dispensing",
+    "NO_ID_CHECK": "Premature Cash Dispensing",
+    "UNLOCKED_SAFE": "Open Safe or Storage Cabinet",
     "LEAVE_WORKPLACE": "Leaving Cash Desk Unattended",
     "NO_COUNTING_MACHINE": "Incorrect Cash Handling",
-    "UNAUTHORIZED_ITEMS": "Personal Belongings on Cash Desk",
-    "PHONE_USAGE": "Distraction or Smartphone Use",
-    "CASHIER_DISTRACTED": "Distraction or Smartphone Use",
-    "FOOD_DRINK_AT_DESK": "Food or Beverages at Workstation",
-    "THIRD_PERSON_INTRUSION": "Unauthorized Persons in Cash Area",
-    "MULTIPLE_CLIENTS": "Unauthorized Persons in Cash Area",
-    "INCASSATION_VIOLATION": "Violation of Incassation Protocol",
-    "CASH_OUT_OF_VIEW": "Cash Counting Out of Customer View"
+    "UNAUTHORIZED_ITEMS": "Personal Belongings on Work Desk",
+    "PHONE_USAGE": "Smartphone Usage in Cash Area",
+    "CASHIER_DISTRACTED": "Distracted Cashier or Loss of Control",
+    "FOOD_DRINK_AT_DESK": "Personal Belongings on Work Desk",
+    "THIRD_PERSON_INTRUSION": "Unauthorized Person in Cash Cabin",
+    "MULTIPLE_CLIENTS": "Customer Information Exposure",
+    "COUNTING_AWAY_FROM_CLIENT": "Hidden Cash Counting",
+    "CASH_OUT_OF_VIEW": "Hidden Cash Counting",
+    "UNLOCKED_DOOR": "Unlocked Cash Cabin Door",
+    "MONEY_LEFT_BETWEEN_CLIENTS": "Unattended Cash and Valuables",
+    "MIXED_CASH": "Unattended Cash and Valuables",
+    "INCASSATION_VIOLATION": "Incashment Bag Transfer Without Verification"
 }
 
 # Хранилище задач в памяти
@@ -209,40 +213,39 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
 
         for idx, v in enumerate(violations_list):
             v_type_raw = v.get("type", "LEAVE_WORKPLACE")
-            law_key = LAW_TYPE_MAPPING.get(v_type_raw, v_type_raw)
+            canonical_type = LAW_TYPE_MAPPING.get(v_type_raw, v_type_raw)
 
-            # Получаем запись из обновленной нормативной базы legal_base.py (точные цитаты и note)
-            legal_entry = LEGAL_ARTICLES_RK.get(v_type_raw) or LEGAL_ARTICLES_RK.get(law_key)
-            if legal_entry:
-                law_title = legal_entry["law_source"]
-                law_quote = legal_entry["law_quote"]
-                law_note = legal_entry.get("note", "")
-                law_url = "https://adilet.zan.kz"
-                if "(" in law_title and ")" in law_title:
-                    raw_url = law_title.split("(")[-1].rstrip(")")
-                    law_url = f"https://{raw_url}" if not raw_url.startswith("http") else raw_url
+            # Получаем запись из нормативной базы laws.json (сформированной на основе laws_database_json.md)
+            law_entry = LAWS_DB.get(v_type_raw) or LAWS_DB.get(canonical_type) or {}
+            
+            # Фоллбэк на legal_base если есть специальное примечание
+            legal_entry = LEGAL_ARTICLES_RK.get(v_type_raw) or LEGAL_ARTICLES_RK.get(canonical_type) or {}
 
-                full_quote = law_quote
-                if law_note:
-                    full_quote += f" (Примечание: {law_note})"
+            law_title = law_entry.get("title") or legal_entry.get("law_source") or "ПП НБРК № 231"
+            law_quote = law_entry.get("quote") or legal_entry.get("law_quote") or "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания."
+            law_name_ru = law_entry.get("name_ru") or v.get("description", "Нарушение кассовой дисциплины")
+            law_group = law_entry.get("group") or "Нарушения кассовой дисциплины"
+            criticality = law_entry.get("criticality") or "HIGH"
+            law_url = law_entry.get("url") or "https://adilet.zan.kz/rus/docs/P1900000231"
+            law_note = legal_entry.get("note", "")
 
-                law_info = {
-                    "title": law_title,
-                    "quote": full_quote,
-                    "url": law_url,
-                    "note": law_note
-                }
-            else:
-                law_info = LAWS_DB.get(law_key, {
-                    "title": "Постановление Правления НБРК от 29.11.2019 № 231",
-                    "quote": "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания.",
-                    "url": "https://adilet.zan.kz/rus/docs/V1900019680",
-                    "note": ""
-                })
+            full_quote = law_quote
+            if law_note and law_note not in full_quote:
+                full_quote = f"{law_quote} (Примечание: {law_note})"
 
-            obs_text = v.get("description", "Зафиксировано отклонение от кассового регламента.")
-            if legal_entry and legal_entry.get("note") and "Примечание" not in obs_text:
-                obs_text = f"{obs_text.rstrip('.')} Примечание: {legal_entry['note']}"
+            law_info = {
+                "title": law_title,
+                "name_ru": law_name_ru,
+                "quote": full_quote,
+                "group": law_group,
+                "criticality": criticality,
+                "url": law_url,
+                "note": law_note
+            }
+
+            obs_text = v.get("description", law_name_ru)
+            if law_note and "Примечание" not in obs_text:
+                obs_text = f"{obs_text.rstrip('.')} Примечание: {law_note}"
 
             t_viol = float(v.get("timecode_sec", 0.0))
 
@@ -296,7 +299,11 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
             enriched_incidents.append({
                 "id": idx + 1,
                 "timeSec": t_viol,
-                "type": law_key,
+                "type": canonical_type,
+                "type_raw": v_type_raw,
+                "type_ru": law_name_ru,
+                "group": law_group,
+                "criticality": criticality,
                 "observation": obs_text,
                 "frame": moment_frame,
                 "collage": collage_img,
@@ -324,9 +331,12 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
         c.release()
 
         clean_citation = {
-            "title": "Постановление Правления Национального Банка РК от 29 ноября 2019 года № 231 (Правила ведения кассовых операций)",
+            "title": "Постановление Правления Национального Банка РК от 29 ноября 2019 года № 231",
+            "name_ru": "Кассовый регламент и порядок ведения кассовых операций соблюдены в полном объеме",
             "quote": "Кассир осуществляет прием и выдачу наличных денег и ценностей клиентам исключительно через передаточный кассовый лоток в пределах защищенной кассовой кабины, обеспечивая непрерывный визуальный контроль и соблюдение тайны операций.",
-            "url": "https://adilet.zan.kz/rus/docs/V1900019680",
+            "url": "https://adilet.zan.kz/rus/docs/P1900000231",
+            "group": "Соответствие нормативным требованиям НБ РК",
+            "criticality": "NORMAL",
             "note": "Нарушений кассовой дисциплины, оставления рабочего места, несанкционированного доступа или использования смартфона не выявлено."
         }
 
@@ -433,6 +443,16 @@ async def health_check():
         "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU",
         "model": "YOLO11m-Pose + Qwen2-VL-2B-Instruct (FP16)",
         "offline_engine": True
+    }
+
+
+@app.get("/api/v1/laws", summary="Нормативно-правовая база законов НБ РК")
+async def get_laws_database():
+    """Возвращает базу канонических нарушений кассовой дисциплины НБ РК (laws_database_json.md)."""
+    return {
+        "status": "ok",
+        "count": len(LAWS_DB),
+        "laws": LAWS_DB
     }
 
 

@@ -238,12 +238,15 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         </div>
         <div class="mt-3 flex gap-3 rounded-lg border border-slate-100 p-3 bg-slate-50/50">
           <div class="min-w-0 flex-1">
+            <div id="activeCitationGroup" class="hidden text-[10px] font-bold uppercase tracking-wider text-[#910A38] bg-rose-50 px-2 py-0.5 rounded border border-rose-200/60 inline-block mb-1.5"></div>
             <div class="flex flex-wrap items-center gap-2">
               <span id="activeStatusBadge" class="rounded-md bg-[#DC2626] px-2 py-1 text-xs font-semibold text-white">Violation</span>
-              <span id="activeTimecode" class="font-semibold font-mono">00:44.2</span>
+              <span id="activeCriticalityBadge" class="hidden rounded-md px-2 py-1 text-xs font-bold text-white shadow-sm">CRITICAL</span>
+              <span id="activeTimecode" class="font-semibold font-mono text-slate-800">00:44.2</span>
             </div>
-            <h4 id="activeType" class="mt-2.5 font-semibold text-slate-900">Leaving Cash Desk Unattended</h4>
-            <p id="activeObservation" class="mt-1 text-xs text-slate-600 leading-relaxed">The cashier leaves the cash desk area and is not present at the workstation.</p>
+            <h4 id="activeType" class="mt-2 font-semibold text-slate-900 leading-snug">Leaving Cash Desk Unattended</h4>
+            <p id="activeTypeEn" class="text-[11px] font-mono text-slate-500 mt-0.5"></p>
+            <p id="activeObservation" class="mt-2 text-xs text-slate-600 leading-relaxed"></p>
           </div>
           <!-- Clickable Preview Thumbnail with Hover Overlay -->
           <div id="activeImgContainer" class="relative hidden h-24 w-32 shrink-0 overflow-hidden rounded-md bg-slate-200 sm:block group cursor-pointer border border-slate-300 shadow-sm" onclick="openActiveIncidentModal()" title="Нажмите для рассмотрения вблизи">
@@ -262,10 +265,15 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         </button>
 
         <div class="mt-3 rounded-lg bg-slate-50 p-3 border border-slate-100">
-          <div class="text-xs font-semibold uppercase tracking-wider text-[#910A38]">Legal &amp; Regulatory Citation</div>
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-bold uppercase tracking-wider text-[#910A38]">Нормативная база (НБ РК) / Legal Citation</div>
+            <span id="activeCitationGroupMini" class="text-[10px] text-slate-500 font-medium"></span>
+          </div>
           <p id="activeCitationTitle" class="mt-1.5 text-xs font-semibold text-slate-800"></p>
-          <p id="activeCitationQuote" class="mt-1 text-xs italic text-slate-600 leading-relaxed"></p>
-          <a id="activeCitationUrl" href="https://adilet.zan.kz" target="_blank" class="mt-2 inline-block text-xs font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>
+          <div class="mt-2 border-l-2 border-[#910A38] pl-2.5">
+            <p id="activeCitationQuote" class="text-xs italic text-slate-600 leading-relaxed"></p>
+          </div>
+          <a id="activeCitationUrl" href="https://adilet.zan.kz" target="_blank" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>
         </div>
       </div>
     </div>
@@ -285,12 +293,12 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         <thead class="bg-slate-50 text-xs text-slate-600">
           <tr>
             <th class="px-3 py-2.5 font-semibold">#</th>
-            <th class="px-3 py-2.5 font-semibold">Timestamp</th>
-            <th class="px-3 py-2.5 font-semibold">Violation Type</th>
+            <th class="px-3 py-2.5 font-semibold">Таймкод</th>
+            <th class="px-3 py-2.5 font-semibold">Нарушение (Квалификация)</th>
             <th class="px-3 py-2.5 font-semibold">Evidence Frame (11 кадров)</th>
-            <th class="px-3 py-2.5 font-semibold">AI Visual Observation</th>
-            <th class="px-3 py-2.5 font-semibold">Legal &amp; Regulatory Citation</th>
-            <th class="px-3 py-2.5 font-semibold">Status</th>
+            <th class="px-3 py-2.5 font-semibold">Визуальная фиксация AI</th>
+            <th class="px-3 py-2.5 font-semibold">Нормативная база НБ РК</th>
+            <th class="px-3 py-2.5 font-semibold">Критичность</th>
           </tr>
         </thead>
         <tbody id="incidentsTbody">
@@ -651,6 +659,22 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
           </div>`
         : `<div class="h-12 w-20 rounded bg-slate-100 flex items-center justify-center text-[10px] text-slate-400">Нет кадра</div>`;
 
+      const criticality = (item.criticality || (item.citation && item.citation.criticality) || 'HIGH').toUpperCase();
+      let critBadge = '';
+      if (criticality === 'CRITICAL') {
+        critBadge = `<span class="inline-flex items-center gap-1 rounded bg-red-100 border border-red-300 px-2 py-1 text-xs font-bold text-red-700 shadow-xs">🔴 КРИТИЧЕСКИЙ</span>`;
+      } else if (criticality === 'HIGH') {
+        critBadge = `<span class="inline-flex items-center gap-1 rounded bg-amber-100 border border-amber-300 px-2 py-1 text-xs font-bold text-amber-800 shadow-xs">⚠️ ВЫСОКИЙ</span>`;
+      } else if (criticality === 'MEDIUM') {
+        critBadge = `<span class="inline-flex items-center gap-1 rounded bg-sky-100 border border-sky-300 px-2 py-1 text-xs font-bold text-sky-800 shadow-xs">ℹ️ СРЕДНИЙ</span>`;
+      } else {
+        critBadge = `<span class="inline-flex items-center gap-1 rounded bg-emerald-100 border border-emerald-300 px-2 py-1 text-xs font-bold text-emerald-800 shadow-xs">НОРМА</span>`;
+      }
+
+      const dispTitle = item.type_ru || item.type;
+      const subTitle = item.type && item.type !== dispTitle ? item.type : (item.type_raw || '');
+      const groupText = item.group || (item.citation && item.citation.group) || '';
+
       tr.innerHTML = `
         <td class="px-3 py-3 font-semibold text-slate-700">${idx + 1}</td>
         <td class="px-3 py-3">
@@ -659,14 +683,19 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
             <button onclick="event.stopPropagation(); jumpToSec(${item.timeSec})" class="rounded bg-[#910A38] px-2 py-1 text-xs font-medium text-white hover:opacity-90 transition-opacity">▶ Jump</button>
           </div>
         </td>
-        <td class="px-3 py-3 font-semibold text-slate-900">${item.type}</td>
+        <td class="px-3 py-3">
+          ${groupText ? `<div class="text-[10px] font-bold text-[#910A38] uppercase tracking-wide mb-1 leading-tight">${groupText}</div>` : ''}
+          <div class="font-semibold text-slate-900 leading-snug text-sm">${dispTitle}</div>
+          ${subTitle ? `<div class="text-[11px] font-mono text-slate-500 mt-0.5">${subTitle}</div>` : ''}
+        </td>
         <td class="px-3 py-3">${frameCellHtml}</td>
         <td class="max-w-xs px-3 py-3 text-xs text-slate-600 leading-relaxed">${item.observation}</td>
         <td class="px-3 py-3 text-xs">
-          <div class="text-slate-800 font-medium">${item.citation ? item.citation.title : ''}</div>
-          ${item.citation && item.citation.url ? `<a href="${item.citation.url}" target="_blank" onclick="event.stopPropagation()" class="mt-1 inline-block font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>` : ''}
+          <div class="text-slate-800 font-semibold leading-snug">${item.citation ? item.citation.title : ''}</div>
+          ${item.citation && item.citation.quote ? `<div class="mt-1 text-[11px] italic text-slate-500 line-clamp-2 leading-relaxed">“${item.citation.quote}”</div>` : ''}
+          ${item.citation && item.citation.url ? `<a href="${item.citation.url}" target="_blank" onclick="event.stopPropagation()" class="mt-1.5 inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline">adilet.zan.kz ↗</a>` : ''}
         </td>
-        <td class="px-3 py-3"><span class="rounded-md bg-red-50 border border-red-200 px-2 py-1 text-xs font-semibold text-[#DC2626]">${item.status}</span></td>
+        <td class="px-3 py-3">${critBadge}</td>
       `;
       tr.onclick = () => selectIncident(item, idx);
       tbody.appendChild(tr);
@@ -697,8 +726,53 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     badge.className = 'rounded-md bg-[#DC2626] px-2 py-1 text-xs font-semibold text-white';
     badge.innerText = item.status || 'Violation';
 
+    // Criticality badge in Event Details
+    const critBadge = document.getElementById('activeCriticalityBadge');
+    if (critBadge) {
+      const crit = (item.criticality || (item.citation && item.citation.criticality) || 'HIGH').toUpperCase();
+      critBadge.classList.remove('hidden');
+      if (crit === 'CRITICAL') {
+        critBadge.className = 'rounded-md bg-red-600 px-2 py-1 text-xs font-bold text-white shadow-sm';
+        critBadge.innerText = 'CRITICAL (Критический)';
+      } else if (crit === 'HIGH') {
+        critBadge.className = 'rounded-md bg-amber-500 px-2 py-1 text-xs font-bold text-white shadow-sm';
+        critBadge.innerText = 'HIGH (Высокий)';
+      } else if (crit === 'MEDIUM') {
+        critBadge.className = 'rounded-md bg-sky-600 px-2 py-1 text-xs font-bold text-white shadow-sm';
+        critBadge.innerText = 'MEDIUM (Средний)';
+      } else {
+        critBadge.className = 'rounded-md bg-emerald-600 px-2 py-1 text-xs font-bold text-white shadow-sm';
+        critBadge.innerText = 'NORMAL';
+      }
+    }
+
+    // Group tags
+    const group = item.group || (item.citation && item.citation.group) || '';
+    const groupEl = document.getElementById('activeCitationGroup');
+    const groupMini = document.getElementById('activeCitationGroupMini');
+    if (groupEl) {
+      if (group) {
+        groupEl.innerText = group;
+        groupEl.classList.remove('hidden');
+      } else {
+        groupEl.classList.add('hidden');
+      }
+    }
+    if (groupMini) {
+      groupMini.innerText = group;
+    }
+
     document.getElementById('activeTimecode').innerText = `${item.timeSec}s`;
-    document.getElementById('activeType').innerText = item.type;
+    
+    // Violation titles
+    const dispTitle = item.type_ru || item.type;
+    const subTitle = item.type && item.type !== dispTitle ? item.type : (item.type_raw || '');
+    document.getElementById('activeType').innerText = dispTitle;
+    const typeEnEl = document.getElementById('activeTypeEn');
+    if (typeEnEl) {
+      typeEnEl.innerText = subTitle;
+    }
+
     document.getElementById('activeObservation').innerText = item.observation;
     
     const activeImg = document.getElementById('activeImg');
@@ -957,32 +1031,71 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     const frameData = captureVideoFrame();
 
     const legalMap = {
+      "Premature Cash Dispensing": {
+        title: "ПП НБРК № 231, Глава 2, п. 31",
+        name_ru: "Выдача наличных клиенту до проверки личности и подписания кассовых документов",
+        quote: "Сначала выдаются деньги, клиент забирает их, а документы подписываются позже или вовсе не подписываются.",
+        group: "Группа II. Нарушения при приеме, пересчете и выдаче наличных денег",
+        criticality: "HIGH",
+        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+      },
       "Customer Identification Failure": {
-        title: "Постановление Правления НБРК от 29.11.2019 № 231, п. 19 пп. 1), п. 31 пп. 1) / Закон РК о ПОД/ФТ, ст. 5",
-        quote: "Кассовый работник банка проводит визуальную идентификацию клиента по данным документа, удостоверяющего личность, либо данным, подтверждающим личность клиента посредством сервиса цифровых документов.",
-        url: "https://adilet.zan.kz/rus/docs/V1900019680"
+        title: "ПП НБРК № 231, Глава 2, п. 31",
+        name_ru: "Выдача наличных клиенту до проверки личности и подписания кассовых документов",
+        quote: "Сначала выдаются деньги, клиент забирает их, а документы подписываются позже или вовсе не подписываются.",
+        group: "Группа II. Нарушения при приеме, пересчете и выдаче наличных денег",
+        criticality: "HIGH",
+        url: "https://adilet.zan.kz/rus/docs/P1900000231"
       },
-      "Unauthorized Persons in Cash Area": {
-        title: "Постановление Правления НБРК от 24.02.2020 № 14, п. 8; Постановление НБРК № 231, п. 75",
-        quote: "Кассовый узел подлежит изолированию от других производственных и служебных помещений одним закрывающимся служебным входом.",
-        url: "https://adilet.zan.kz/rus/docs/V2000020075"
+      "Unauthorized Person in Cash Cabin": {
+        title: "ПП НБРК № 231, п. 14, 75",
+        name_ru: "Проникновение посторонних лиц в помещение кассовой кабины",
+        quote: "Вход посторонних лиц в кассовое помещение категорически запрещен. Доступ имеют только кассиры данной смены.",
+        group: "Группа III. Нарушения режима безопасности и доступа",
+        criticality: "CRITICAL",
+        url: "https://adilet.zan.kz/rus/docs/P1900000231"
       },
-      "Open Safe Door Unattended": {
-        title: "Постановление Правления НБРК от 29.11.2019 № 231, п. 20, п. 80",
-        quote: "Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте кассового работника, закрывающихся на ключ.",
-        url: "https://adilet.zan.kz/rus/docs/V1900019680"
+      "Open Safe or Storage Cabinet": {
+        title: "ПП НБРК № 231, Глава 2, п. 20, 80",
+        name_ru: "Нарушение режима хранения ценностей / открытый сейф или металлический шкаф",
+        quote: "Дверцы сейфов, металлических шкафов и тележек во время работы должны быть закрыты на ключ, если в данный момент не производится закладка или изъятие ценностей.",
+        group: "Группа III. Нарушения режима безопасности и доступа",
+        criticality: "CRITICAL",
+        url: "https://adilet.zan.kz/rus/docs/P1900000231"
       },
       "Leaving Cash Desk Unattended": {
-        title: "Постановление Правления НБРК от 29.11.2019 № 231, п. 20, п. 22",
-        quote: "Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента.",
-        url: "https://adilet.zan.kz/rus/docs/V1900019680"
+        title: "ПП НБРК № 231, Глава 2, п. 22",
+        name_ru: "Оставление рабочего места кассиром до завершения операции",
+        quote: "Кассовому работнику запрещается покидать рабочее место до завершения кассовой операции и уборки ценностей в сейф.",
+        group: "Группа I. Нарушения порядка на рабочем месте и поведения кассира",
+        criticality: "CRITICAL",
+        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+      },
+      "Bypassing Security Pass Tray": {
+        title: "ПП НБРК № 14, Глава 3, п. 16 пп. 4",
+        name_ru: "Передача денег в обход защитного передаточного устройства (лотка)",
+        quote: "Передача ценностей и документов должна осуществляться исключительно через передаточный лоток или передаточный шлюз.",
+        group: "Группа II. Нарушения при приеме, пересчете и выдаче наличных денег",
+        criticality: "HIGH",
+        url: "https://adilet.zan.kz/rus/docs/P2000000014"
+      },
+      "Incorrect Cash Handling": {
+        title: "ПП НБРК № 231, п. 19 пп. 2, п. 41",
+        name_ru: "Прием или выдача наличности без пересчета на счетно-сортировальной технике",
+        quote: "Кассир обязан пересчитать полистно или на счетно-сортировальной машине каждую принятую банкноту с обязательной проверкой признаков подлинности.",
+        group: "Группа II. Нарушения при приеме, пересчете и выдаче наличных денег",
+        criticality: "HIGH",
+        url: "https://adilet.zan.kz/rus/docs/P1900000231"
       }
     };
 
     const cit = legalMap[violationType] || {
-      title: "Постановление Правления НБРК от 29.11.2019 № 231",
+      title: "ПП НБРК № 231",
+      name_ru: violationType,
       quote: "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания.",
-      url: "https://adilet.zan.kz/rus/docs/V1900019680"
+      group: "Нарушения кассовой дисциплины",
+      criticality: "HIGH",
+      url: "https://adilet.zan.kz/rus/docs/P1900000231"
     };
 
     if (!jobData.incidents) jobData.incidents = [];
@@ -992,7 +1105,10 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       id: newIdx + 1,
       timeSec: curSec,
       type: violationType,
-      observation: `Ручная отметка инспектора на ${curSec}s: зафиксировано нарушение (${violationType}).`,
+      type_ru: cit.name_ru || violationType,
+      group: cit.group || "",
+      criticality: cit.criticality || "HIGH",
+      observation: `Ручная отметка инспектора на ${curSec}s: ${cit.name_ru || violationType}.`,
       frame: frameData,
       collage: frameData,
       sequence_frames: [{
@@ -1026,14 +1142,16 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
 
   function promptAddMarker() {
     const curSec = Math.round(((customVideo && customVideo.currentTime) || 0) * 10) / 10;
-    const choice = prompt(`Укажите тип нарушения для отметки на ${curSec} сек:\n\n1 - Не проверила удостоверение личности\n2 - Посторонний человек в кассе\n3 - Сейф / ценности без присмотра\n4 - Оставление рабочего места\n\nВведите цифру 1-4 или название:`, "1");
+    const choice = prompt(`Укажите тип нарушения для отметки на ${curSec} сек:\n\n1 - Выдача наличных клиенту до проверки личности\n2 - Проникновение посторонних лиц в помещение кассовой кабины\n3 - Нарушение режима хранения ценностей / открытый сейф\n4 - Оставление рабочего места кассиром\n5 - Передача денег в обход передаточного лотка\n6 - Прием или выдача наличности без пересчета на технике\n\nВведите цифру 1-6 или название:`, "1");
     if (!choice) return;
 
-    let tName = "Customer Identification Failure";
-    if (choice === "1") tName = "Customer Identification Failure";
-    else if (choice === "2") tName = "Unauthorized Persons in Cash Area";
-    else if (choice === "3") tName = "Open Safe Door Unattended";
+    let tName = "Premature Cash Dispensing";
+    if (choice === "1") tName = "Premature Cash Dispensing";
+    else if (choice === "2") tName = "Unauthorized Person in Cash Cabin";
+    else if (choice === "3") tName = "Open Safe or Storage Cabinet";
     else if (choice === "4") tName = "Leaving Cash Desk Unattended";
+    else if (choice === "5") tName = "Bypassing Security Pass Tray";
+    else if (choice === "6") tName = "Incorrect Cash Handling";
     else tName = choice;
 
     quickAddMarker(tName);
@@ -1050,7 +1168,10 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
 
     document.getElementById('modalTitle').innerText = `Инцидент #${incidentIdx + 1}`;
     document.getElementById('modalTimeBadge').innerText = `${currentIncident.timeSec}s`;
-    document.getElementById('modalSubtitle').innerText = currentIncident.type;
+    const mCrit = (currentIncident.criticality || (currentIncident.citation && currentIncident.citation.criticality) || 'HIGH').toUpperCase();
+    const mTitle = currentIncident.type_ru || currentIncident.type;
+    const mLaw = currentIncident.citation ? currentIncident.citation.title : '';
+    document.getElementById('modalSubtitle').innerText = `${mTitle} [${mCrit}] ${mLaw ? '• ' + mLaw : ''}`;
     document.getElementById('modalTabsContainer').style.display = 'flex';
     document.getElementById('modalFilmstripContainer').style.display = 'block';
 
@@ -1435,28 +1556,32 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     if (!jobData) return;
 
     let csvContent = "\uFEFF";
-    csvContent += "№;Таймкод (сек);Тип нарушения;Описание AI;Статья НБРК;Ссылка на закон\n";
+    csvContent += "№;Таймкод (сек);Квалификация (RU);Код нарушения;Критичность;Группа нарушений;Описание AI;Статья НБРК;Цитата НПА;Ссылка на закон\n";
 
     if (jobData.incidents && jobData.incidents.length > 0) {
       jobData.incidents.forEach((item, index) => {
         const row = [
           index + 1,
           item.timeSec,
+          `"${(item.type_ru || item.type || '').replace(/"/g, '""')}"`,
           `"${(item.type || '').replace(/"/g, '""')}"`,
+          `"${(item.criticality || (item.citation && item.citation.criticality) || 'HIGH').replace(/"/g, '""')}"`,
+          `"${(item.group || (item.citation && item.citation.group) || '').replace(/"/g, '""')}"`,
           `"${(item.observation || '').replace(/"/g, '""')}"`,
           `"${item.citation ? (item.citation.title || '').replace(/"/g, '""') : ''}"`,
+          `"${item.citation ? (item.citation.quote || '').replace(/"/g, '""') : ''}"`,
           `"${item.citation ? (item.citation.url || '') : ''}"`
         ];
         csvContent += row.join(";") + "\n";
       });
     } else {
-      csvContent += `1;"00:00 - ${jobData.durationStr || ''}";"Штатная работа кассира";"Все регламенты соблюдены";"Постановление Правления НБРК № 231";"https://adilet.zan.kz/rus/docs/V1900019680"\n`;
+      csvContent += `1;"00:00 - ${jobData.durationStr || ''}";"Штатная работа кассира";"COMPLIANT";"NORMAL";"Соответствие требованиям НБ РК";"Все регламенты соблюдены";"Постановление Правления НБРК № 231";"Кассир соблюдает правила кассовых операций";"https://adilet.zan.kz/rus/docs/P1900000231"\n`;
     }
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `ForteAI_Report_${jobData.job_id}.csv`;
+    a.download = `ForteAI_Compliance_Report_${jobData.job_id}.csv`;
     a.click();
   };
 
