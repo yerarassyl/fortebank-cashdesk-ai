@@ -49,7 +49,8 @@ else:
 # Сопоставление внутренних типов детектора с разделами laws.json
 LAW_TYPE_MAPPING = {
     "CLIENT_DESK_ACCESS": "Bypassing Cash Tray",
-    "NO_ID_VERIFICATION": "Customer Information Exposure",
+    "NO_ID_VERIFICATION": "Customer Identification Failure",
+    "NO_ID_CHECK": "Customer Identification Failure",
     "UNLOCKED_SAFE": "Open Safe Door Unattended",
     "LEAVE_WORKPLACE": "Leaving Cash Desk Unattended",
     "NO_COUNTING_MACHINE": "Incorrect Cash Handling",
