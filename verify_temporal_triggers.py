@@ -12,6 +12,7 @@ import time
 import numpy as np
 import pandas as pd
 from ultralytics import YOLO
+from cv_triggers import select_covering_events
 
 def parse_target_sec(ts_raw):
     if pd.isna(ts_raw):
@@ -66,6 +67,7 @@ def main():
     FRAME_STEP = 5 # ~6 кадров/сек
     MIN_STABLE_SEC = 1.3 # Отражения и шум обычно длятся < 1с. Человек держится >= 1.3с
     MAX_LOST_SEC = 1.0
+    COVER_RADIUS_SEC = 10.0 # = допуск оценки: отбор минимального набора триггеров без потери покрытия
 
     report_rows = []
     t_start_all = time.time()
@@ -272,6 +274,13 @@ def main():
                     continue
                 cleaned.append((s, trig_type, d_text))
 
+        raw_cleaned = cleaned
+        selected = select_covering_events(
+            [{"timecode_sec": s, "trigger": t, "prompt_focus": d} for s, t, d in cleaned],
+            duration, COVER_RADIUS_SEC
+        )
+        cleaned = [(e["timecode_sec"], e["trigger"], e["prompt_focus"]) for e in selected]
+
         # Оценка покрытия нарушения
         matched_trigger = None
         min_delta = 999.0
@@ -291,11 +300,13 @@ def main():
             "TargetSec": target_sec,
             "Description": desc,
             "Context": who,
+            "RawTriggersCount": len(raw_cleaned),
             "TriggersCount": len(cleaned),
             "BestTrigger": matched_trigger,
             "MinDeltaSec": round(min_delta, 2) if is_violation else None,
             "Caught": is_caught,
-            "TriggersDetail": "; ".join([f"{s:.1f}s({t})" for s, t, _ in cleaned])
+            "TriggersDetail": "; ".join([f"{s:.1f}s({t})" for s, t, _ in cleaned]),
+            "RawTriggersDetail": "; ".join([f"{s:.1f}s({t})" for s, t, _ in raw_cleaned])
         })
 
         tag = " OK " if is_caught else "FAIL"
@@ -316,7 +327,8 @@ def main():
     print("ИТОГИ АУДИТА С ЧИСТОЙ ВРЕМЕННОЙ СТАБИЛЬНОСТЬЮ (NO HARDCODED PIXELS):")
     print(f"Поймано реальных нарушений: {caught_count} из {total_violations} ({caught_count/total_violations*100:.1f}%)")
     print(f"Среднее отклонение таймкода триггера от разметки: {mean_delta:.2f} сек")
-    print(f"ОБЩЕЕ ЧИСЛО СРАБАТЫВАНИЙ ТРИГГЕРОВ: {total_triggers} (в среднем {total_triggers/42:.1f} на видео)")
+    raw_total = rep_df["RawTriggersCount"].sum()
+    print(f"ОБЩЕЕ ЧИСЛО СРАБАТЫВАНИЙ ТРИГГЕРОВ: {total_triggers} (в среднем {total_triggers/42:.1f} на видео; до отбора: {raw_total})")
     print(f"Обработано кадров: {total_processed_frames} за {t_total:.1f}с ({total_processed_frames/t_total:.1f} FPS на CUDA)")
     print("=" * 90)
 
