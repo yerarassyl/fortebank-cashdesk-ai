@@ -147,11 +147,12 @@ class BankViolationDetector:
                     "verdict": "no_violation",
                     "violations": []
                 }
+            # Каждый оставшийся триггер покрывает окно подавленных соседей — VLM смотрит его целиком
             windows = [
                 (
                     ev["timecode_sec"],
-                    max(0.0, ev["timecode_sec"] - 3.5),
-                    min(duration, ev["timecode_sec"] + 3.5),
+                    ev.get("window_start_sec", max(0.0, ev["timecode_sec"] - 3.5)),
+                    ev.get("window_end_sec", min(duration, ev["timecode_sec"] + 3.5)),
                     ev.get("prompt_focus")
                 )
                 for ev in events
@@ -160,8 +161,9 @@ class BankViolationDetector:
         violations = []
 
         for center_t, start_t, end_t, event_prompt in windows:
-            # Извлекаем 6 кадров из целевого короткого окна вокруг события
-            t_points = np.linspace(start_t, end_t, 6)
+            # ~1 кадр на 2с окна: 6 кадров для коротких окон, до 10 для широких (четное число для Qwen2-VL)
+            n_frames = int(min(10, max(6, 2 * round((end_t - start_t) / 4))))
+            t_points = np.linspace(start_t, end_t, n_frames)
             frames_pil = []
             frames_cv2 = []
 

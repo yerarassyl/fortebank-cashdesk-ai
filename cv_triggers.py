@@ -28,6 +28,44 @@ class TemporalTrack:
         self.initial_center = self.center
         self.is_cashier = False
 
+def select_covering_events(events, duration, radius_sec=10.0):
+    """
+    Минимизация числа триггеров без потери покрытия таймлайна.
+    Каждый триггер "отвечает" за окно [t - R, t + R]. Оставляем минимальное подмножество
+    триггеров, окна которых покрывают ровно ту же область видео, что и окна всех триггеров
+    (жадный алгоритм покрытия интервалами одинаковой длины — оптимален).
+    Любой момент нарушения в пределах R от исходного триггера остается в пределах R от
+    выбранного, поэтому recall при допуске R не падает.
+    Подавленные триггеры не теряются: их тип и prompt_focus сливаются в ближайший выбранный.
+    """
+    if not events:
+        return []
+    evs = sorted(events, key=lambda e: e["timecode_sec"])
+    kept = []
+    i, n = 0, len(evs)
+    while i < n:
+        covered = max(0.0, evs[i]["timecode_sec"] - radius_sec)
+        while i < n and evs[i]["timecode_sec"] - radius_sec <= covered:
+            best = None
+            while i < n and evs[i]["timecode_sec"] - radius_sec <= covered:
+                best = evs[i]
+                i += 1
+            kept.append(dict(best))
+            covered = best["timecode_sec"] + radius_sec
+            if duration and covered >= duration:
+                i = n
+
+    for k in kept:
+        k["merged_triggers"] = []
+        k["window_start_sec"] = round(max(0.0, k["timecode_sec"] - radius_sec), 1)
+        k["window_end_sec"] = round(min(duration, k["timecode_sec"] + radius_sec) if duration else k["timecode_sec"] + radius_sec, 1)
+    for ev in evs:
+        owner = min(kept, key=lambda k: abs(k["timecode_sec"] - ev["timecode_sec"]))
+        owner["merged_triggers"].append(ev["trigger"])
+        if ev.get("prompt_focus") and ev["prompt_focus"] not in owner["prompt_focus"]:
+            owner["prompt_focus"] += f"\n[{ev['timecode_sec']}с, {ev['trigger']}] " + ev["prompt_focus"]
+    return kept
+
 class PoseEventDetector:
     def __init__(self, model_path=None):
         if model_path is None:
@@ -42,7 +80,7 @@ class PoseEventDetector:
         self.model = YOLO(model_path)
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-    def detect_video_events(self, video_path, step_frames=5, batch_size=16, min_stable_sec=1.3, max_lost_sec=1.0):
+    def detect_video_events(self, video_path, step_frames=5, batch_size=16, min_stable_sec=1.3, max_lost_sec=1.0, cover_radius_sec=10.0):
         """
         Быстрое батч-сканирование видео через YOLO Pose на GPU.
         Фильтрация шумов и отражений строго через Temporal Stability Tracker (без хардкода пикселей).
@@ -320,8 +358,8 @@ class PoseEventDetector:
                 else:
                     handover_hold_count = 0
 
-        # Дебаунс событий
-        return self._debounce_events(raw_events)
+        # Дебаунс событий + отбор минимального покрывающего набора триггеров
+        return select_covering_events(self._debounce_events(raw_events), duration, cover_radius_sec)
 
     def _debounce_events(self, events):
         if not events:
@@ -349,4 +387,4 @@ if __name__ == "__main__":
             evs = detector.detect_video_events(v)
             print(f"Найдено событий: {len(evs)}")
             for e in evs:
-                print(f"   ⏱️ {e['timecode_sec']}с [{e['trigger']}]: {e['context']}")
+                print(f"   ⏱️ {e['timecode_sec']}с [{e['trigger']}]: {e['context']} (покрывает: {', '.join(e['merged_triggers'])})")
