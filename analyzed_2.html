@@ -992,30 +992,56 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
     if (dur <= 0) return;
 
     if (jobData && jobData.incidents && jobData.incidents.length > 0) {
+      // Группируем одновременные / близкие нарушения (в пределах 1 секунды) для идеального отображения
+      const clusters = [];
       jobData.incidents.forEach((inc, idx) => {
         const t = parseFloat(inc.timeSec) || 0;
+        let cluster = clusters.find(c => Math.abs(c.timeSec - t) <= 1.0);
+        if (!cluster) {
+          cluster = { timeSec: t, items: [] };
+          clusters.push(cluster);
+        }
+        cluster.items.push({ inc, idx });
+      });
+
+      clusters.forEach((cluster) => {
+        const t = cluster.timeSec;
         const pct = Math.max(0.5, Math.min(99.5, (t / dur) * 100));
+        const count = cluster.items.length;
+        const hasActive = cluster.items.some(it => it.idx === currentIncidentIdx);
 
         const dot = document.createElement('div');
-        const isActive = (idx === currentIncidentIdx);
-        dot.className = `absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-[#DC2626] border-2 border-white shadow-md ring-2 ring-red-400/80 hover:scale-150 transition-all pointer-events-auto cursor-pointer z-10 ${isActive ? 'ring-4 ring-rose-500 scale-125' : ''}`;
+        if (count > 1) {
+          // Специальный кластерный маркер одновременных нарушений с бейджем (2×, 3× и т.д.)
+          dot.className = `absolute top-1/2 -translate-y-1/2 -translate-x-1/2 min-w-[22px] h-5 px-1.5 rounded-full bg-[#910A38] border-2 border-white shadow-md ring-2 ring-rose-400 hover:scale-125 transition-all pointer-events-auto cursor-pointer z-10 flex items-center justify-center gap-0.5 ${hasActive ? 'ring-4 ring-rose-600 scale-110' : ''}`;
+          dot.innerHTML = `<span class="text-[10px] font-black text-white leading-none">${count}×</span>`;
+        } else {
+          // Одиночный маркер нарушения
+          dot.className = `absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-[#DC2626] border-2 border-white shadow-md ring-2 ring-red-400/80 hover:scale-150 transition-all pointer-events-auto cursor-pointer z-10 ${hasActive ? 'ring-4 ring-rose-500 scale-125' : ''}`;
+        }
         dot.style.left = `${pct}%`;
-        dot.title = `Инцидент #${idx + 1} (${formatMMSS(t)}): ${inc.type}`;
+
+        const titles = cluster.items.map(it => `#${it.idx + 1} ${it.inc.type_ru || it.inc.type}`).join(', ');
+        dot.title = count > 1 ? `⚠️ ${count} одновременных нарушения в ${formatMMSS(t)}: ${titles}` : `Инцидент #${cluster.items[0].idx + 1} (${formatMMSS(t)}): ${cluster.items[0].inc.type_ru || cluster.items[0].inc.type}`;
 
         dot.onmouseenter = () => {
           if (timelineHoverTooltip) {
             timelineHoverTooltip.style.left = `${pct}%`;
-            timelineHoverTooltip.innerText = `● #${idx + 1} ${formatMMSS(t)}: ${inc.type}`;
+            timelineHoverTooltip.innerText = count > 1 ? `⚠️ ${count}× в ${formatMMSS(t)}: ${titles}` : `● #${cluster.items[0].idx + 1} ${formatMMSS(t)}: ${cluster.items[0].inc.type_ru || cluster.items[0].inc.type}`;
             timelineHoverTooltip.classList.remove('hidden');
           }
         };
         dot.onmouseleave = () => {
           hideTimelineHover();
         };
+
         dot.onclick = (e) => {
           e.stopPropagation();
           jumpToSec(t);
-          selectIncident(inc, idx);
+          // При клике на точку одновременных нарушений переключаемся между ними по кругу
+          const activeInClusterIdx = cluster.items.findIndex(it => it.idx === currentIncidentIdx);
+          const nextItem = activeInClusterIdx >= 0 ? cluster.items[(activeInClusterIdx + 1) % count] : cluster.items[0];
+          selectIncident(nextItem.inc, nextItem.idx);
         };
 
         timelineMarkersContainer.appendChild(dot);

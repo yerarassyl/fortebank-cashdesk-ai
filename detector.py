@@ -291,7 +291,7 @@ class BankViolationDetector:
             t_ev = ev["timecode_sec"]
             trig = ev["trigger"]
 
-            # Кейс 1: Напитки или Смартфон кассира
+            # Кейс 1: Напитки или Смартфон кассира (могут происходить одновременно)
             if trig == "HAND_TO_MOUTH":
                 cap.set(cv2.CAP_PROP_POS_MSEC, min(duration - 0.1, t_ev + 1.5) * 1000)
                 ret, frame = cap.read()
@@ -300,32 +300,39 @@ class BankViolationDetector:
                     scale = 896 / max(h, w)
                     rgb = cv2.cvtColor(cv2.resize(frame, (int(w * scale), int(h * scale))), cv2.COLOR_BGR2RGB)
                     p = (
-                        "Внимательно посмотри на кассира:\n"
-                        "1. Держит ли кассир чашку, кружку, стакан или бутылку и пьет напиток?\n"
+                        "Внимательно посмотри на кассира и кассовый стол:\n"
+                        "1. Держит ли кассир чашку, кружку, стакан или бутылку, либо стоит ли напиток/еда на рабочем столе?\n"
                         "2. Держит ли кассир в руках мобильный телефон / смартфон и смотрит в него?\n"
-                        "Ответь строго фактом: напиток, телефон или руки свободны/заняты работой?"
+                        "Ответь четко фактами по обоим пунктам."
                     )
                     ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
-                    if any(k in ans for k in ["чашк", "кружк", "стакан", "бутылк", "напиток", "пьет", "кофе", "чай"]):
-                        if not is_duplicate("FOOD_DRINK_AT_DESK", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "FOOD_DRINK_AT_DESK",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Кассир употребляет напиток на рабочем месте: {ans}. Статья: Постановление Правления НБРК № 231, п. 15",
-                                "evidence_frames": ev_frames
-                            })
-                    elif any(k in ans for k in ["телефон", "смартфон", "мобильн", "экран телефон", "phone"]):
-                        if not is_duplicate("CASHIER_DISTRACTED", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "CASHIER_DISTRACTED",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Кассир использует мобильный телефон / отвлекается во время смены: {ans}. Статья: Постановление Правления НБРК № 231, п. 19",
-                                "evidence_frames": ev_frames
-                            })
+                    ev_frames = None
 
-            # Кейс 2: Проверка удостоверения личности клиента (Идентификация перед операцией)
+                    # Нарушение 1: Еда / Напитки на рабочем месте (ПП НБРК № 231, п. 12)
+                    has_drink = any(k in ans for k in ["чашк", "кружк", "стакан", "бутылк", "напиток", "пьет", "кофе", "чай"]) and not any(neg in ans for neg in ["напитка нет", "без напитк", "не пьет", "нет стакана", "нет кружки"])
+                    if has_drink and not is_duplicate("FOOD_DRINK_AT_DESK", t_ev):
+                        if ev_frames is None:
+                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                        detected_violations.append({
+                            "type": "FOOD_DRINK_AT_DESK",
+                            "timecode_sec": round(float(t_ev), 1),
+                            "description": f"Наличие напитка/еды на рабочем столе кассира: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12",
+                            "evidence_frames": ev_frames
+                        })
+
+                    # Нарушение 2: Использование смартфона (независимый IF, может быть одновременно с напитком!)
+                    has_phone = any(k in ans for k in ["телефон", "смартфон", "мобильн", "экран телефон", "phone"]) and not any(neg in ans for neg in ["телефона нет", "без телефон", "не держит телефон", "нет смартфона"])
+                    if has_phone and not is_duplicate("CASHIER_DISTRACTED", t_ev):
+                        if ev_frames is None:
+                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                        detected_violations.append({
+                            "type": "CASHIER_DISTRACTED",
+                            "timecode_sec": round(float(t_ev), 1),
+                            "description": f"Использование смартфона / отвлечение кассира: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12",
+                            "evidence_frames": ev_frames
+                        })
+
+            # Кейс 2: Клиент у окна (Идентификация + сопутствующие нарушения)
             elif trig in ["CLIENT_ARRIVAL", "HANDOVER"] or "CLIENT_ARRIVAL" in ev.get("merged_triggers", []):
                 cap.set(cv2.CAP_PROP_POS_MSEC, min(duration - 0.1, t_ev + 1.5) * 1000)
                 ret, frame = cap.read()
@@ -335,19 +342,48 @@ class BankViolationDetector:
                     rgb = cv2.cvtColor(cv2.resize(frame, (int(w * scale), int(h * scale))), cv2.COLOR_BGR2RGB)
                     p = (
                         "К кассовому окну подошел клиент для совершения операции.\n"
-                        "Внимательно посмотри на действия кассира и передаточный лоток:\n"
-                        "1. Передал ли клиент удостоверение личности или паспорт кассиру?\n"
-                        "2. Проверила ли кассир документ перед началом операции, или сразу перешла к обслуживанию/приему денег без проверки удостоверения личности?\n"
-                        "Ответь строго: 'документ проверен' или 'без проверки документа'."
+                        "Внимательно посмотри на действия кассира, людей у окна и передаточный лоток:\n"
+                        "1. Проверила ли кассир документ перед началом операции, или сразу перешла к обслуживанию/приему денег без проверки удостоверения личности?\n"
+                        "2. Находятся ли у кассового окна одновременно два клиента или посторонний человек?\n"
+                        "3. Пользуется ли кассир смартфоном или стоят ли напитки на столе?\n"
+                        "Ответь кратко по каждому пункту."
                     )
                     ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
+                    ev_frames = None
+
+                    # Нарушение 1: Не проверила удостоверение личности
                     if any(k in ans for k in ["без проверки", "не проверила", "нет документа", "сразу", "не передал", "без документа", "отсутствует"]):
                         if not is_duplicate("NO_ID_VERIFICATION", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            if ev_frames is None:
+                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
                             detected_violations.append({
                                 "type": "NO_ID_VERIFICATION",
                                 "timecode_sec": round(float(t_ev), 1),
                                 "description": f"Нарушение регламента идентификации клиента (кассир не проверила документ, удостоверяющий личность, перед началом операции): {ans}. Статья: Постановление Правления НБРК № 231, п. 19 пп. 1), п. 31 пп. 1) / Закон РК о ПОД/ФТ, ст. 5",
+                                "evidence_frames": ev_frames
+                            })
+
+                    # Нарушение 2: Два клиента одновременно у одного окна
+                    if re.search(r'\b(два клиента|двое клиентов|два человека у окна|посторонний)\b', ans):
+                        if not is_duplicate("THIRD_PERSON_INTRUSION", t_ev):
+                            if ev_frames is None:
+                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "THIRD_PERSON_INTRUSION",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Одновременное нахождение нескольких клиентов у кассового окна (нарушение тайны операций): {ans}. Статья: Постановление Правления НБРК № 231, п. 14, 20",
+                                "evidence_frames": ev_frames
+                            })
+
+                    # Нарушение 3: Смартфон при клиенте
+                    if any(k in ans for k in ["телефон", "смартфон"]) and not any(neg in ans for neg in ["телефона нет", "без телефон"]):
+                        if not is_duplicate("CASHIER_DISTRACTED", t_ev):
+                            if ev_frames is None:
+                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "CASHIER_DISTRACTED",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Использование смартфона во время обслуживания клиента: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12",
                                 "evidence_frames": ev_frames
                             })
 
@@ -375,7 +411,7 @@ class BankViolationDetector:
                                 "evidence_frames": ev_frames
                             })
 
-            # Кейс 4: Оставление рабочего места (ноутбук, деньги, сейф, дверь)
+            # Кейс 4: Оставление рабочего места (комплексный аудит безопасности)
             elif trig == "CASHIER_STANDUP":
                 cap.set(cv2.CAP_PROP_POS_MSEC, min(duration - 0.1, t_ev + 2.0) * 1000)
                 ret, frame = cap.read()
@@ -385,20 +421,59 @@ class BankViolationDetector:
                     rgb = cv2.cvtColor(cv2.resize(frame, (int(w * scale), int(h * scale))), cv2.COLOR_BGR2RGB)
                     p = (
                         "Посмотри на рабочее место кассира после оставления стола:\n"
-                        "1. Включен ли экран ноутбука (светится)?\n"
-                        "2. Открыта ли дверца сейфа?\n"
-                        "3. Лежат ли открытые деньги на столе?\n"
-                        "4. Распахнута ли входная дверь кабинета?\n"
+                        "1. Встал ли кассир и покинул ли рабочее место?\n"
+                        "2. Открыта ли дверца сейфа или металлический шкаф?\n"
+                        "3. Лежат ли открытые деньги/купюры на столе без присмотра?\n"
+                        "4. Распахнута ли или открыта входная дверь кабинета?\n"
                         "Ответь кратко по каждому пункту."
                     )
                     ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
-                    if any(k in ans for k in ["экран включен", "ноутбук включен", "деньги на столе", "дверца сейфа открыта", "дверь распахнута", "дверь открыта"]):
-                        if not is_duplicate("LEAVE_WORKPLACE", t_ev):
+                    ev_frames = None
+
+                    # Нарушение 1: Само оставление рабочего места
+                    if not is_duplicate("LEAVE_WORKPLACE", t_ev):
+                        if ev_frames is None:
                             ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                        detected_violations.append({
+                            "type": "LEAVE_WORKPLACE",
+                            "timecode_sec": round(float(t_ev), 1),
+                            "description": f"Оставление рабочего места кассиром: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 22",
+                            "evidence_frames": ev_frames
+                        })
+
+                    # Нарушение 2: Незапертый сейф (CRITICAL)
+                    if any(k in ans for k in ["сейф открыт", "сейфа открыта", "дверца сейфа открыта", "открытый сейф", "сейф распахнут"]):
+                        if not is_duplicate("UNLOCKED_SAFE", t_ev):
+                            if ev_frames is None:
+                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
                             detected_violations.append({
-                                "type": "LEAVE_WORKPLACE",
+                                "type": "UNLOCKED_SAFE",
                                 "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Оставление рабочего места без соблюдения регламента безопасности: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 38",
+                                "description": f"Дверца сейфа оставлена открытой без присмотра кассира. Статья: Постановление Правления НБРК № 231, Глава 2, п. 20; ПП НБРК № 14, п. 16",
+                                "evidence_frames": ev_frames
+                            })
+
+                    # Нарушение 3: Деньги на столе без присмотра (CRITICAL)
+                    if any(k in ans for k in ["деньги на столе", "купюры на столе", "наличные на столе", "деньги без присмотра"]):
+                        if not is_duplicate("MONEY_LEFT_BETWEEN_CLIENTS", t_ev):
+                            if ev_frames is None:
+                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "MONEY_LEFT_BETWEEN_CLIENTS",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Оставление денежной наличности и ценностей на столе без присмотра кассира. Статья: Постановление Правления НБРК № 231, Глава 2, п. 20",
+                                "evidence_frames": ev_frames
+                            })
+
+                    # Нарушение 4: Незапертая дверь в кассовую зону
+                    if any(k in ans for k in ["дверь открыта", "дверь распахнута", "дверь не заперта", "дверь приоткрыта"]):
+                        if not is_duplicate("UNLOCKED_DOOR", t_ev):
+                            if ev_frames is None:
+                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
+                            detected_violations.append({
+                                "type": "UNLOCKED_DOOR",
+                                "timecode_sec": round(float(t_ev), 1),
+                                "description": f"Входная дверь в кассовую кабину не заперта / распахнута. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12",
                                 "evidence_frames": ev_frames
                             })
 
