@@ -87,6 +87,9 @@ def extract_incident_sequence(video_path: str, t_event: float, duration_sec: flo
     А также генерирует склеенный коллаж (composite collage) для мгновенного обзора всей раскадровки.
     """
     cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0 or np.isnan(fps):
+        fps = 25.0
     offsets = [-2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
     sequence_frames = []
     collage_thumbs = []
@@ -94,10 +97,13 @@ def extract_incident_sequence(video_path: str, t_event: float, duration_sec: flo
     cell_w, cell_h = 280, 160
 
     for i, dt in enumerate(offsets):
-        t = max(0.0, min(duration_sec - 0.05, t_event + dt))
+        t = max(0.0, min(max(0.0, duration_sec - 0.05), t_event + dt))
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
         ret, frame = cap.read()
-        if not ret:
+        if not ret or frame is None:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(t * fps))
+            ret, frame = cap.read()
+        if not ret or frame is None:
             continue
 
         # HD кадр для детального зума и рассмотрения вблизи
@@ -250,6 +256,41 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
                     break
             if not moment_frame and seq_frames:
                 moment_frame = seq_frames[len(seq_frames) // 2]["image_data"]
+
+            # Если кадры не извлеклись через sequence, берем из evidence_frames детектора
+            if not moment_frame and v.get("evidence_frames"):
+                b64 = v["evidence_frames"][0].get("image_base64", "")
+                if b64:
+                    moment_frame = f"data:image/jpeg;base64,{b64}" if not b64.startswith("data:") else b64
+
+            # Если всё еще нет кадра, напрямую считываем кадр из видеофайла
+            if not moment_frame:
+                c_fb = cv2.VideoCapture(file_path)
+                c_fb.set(cv2.CAP_PROP_POS_MSEC, t_viol * 1000)
+                r_fb, f_fb = c_fb.read()
+                if not r_fb or f_fb is None:
+                    c_fb.set(cv2.CAP_PROP_POS_FRAMES, int(t_viol * 25.0))
+                    r_fb, f_fb = c_fb.read()
+                if not r_fb or f_fb is None:
+                    c_fb.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    r_fb, f_fb = c_fb.read()
+                if r_fb and f_fb is not None:
+                    _, buf_fb = cv2.imencode('.jpg', f_fb, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                    moment_frame = "data:image/jpeg;base64," + base64.b64encode(buf_fb).decode('utf-8')
+                c_fb.release()
+
+            if not seq_frames and moment_frame:
+                seq_frames = [{
+                    "index": 5,
+                    "offset_sec": 0.0,
+                    "timestamp_sec": t_viol,
+                    "label": f"★ МОМЕНТ ({t_viol:.1f}с)",
+                    "tag": "Момент",
+                    "is_moment": True,
+                    "image_data": moment_frame
+                }]
+            if not collage_img and moment_frame:
+                collage_img = moment_frame
 
             enriched_incidents.append({
                 "id": idx + 1,

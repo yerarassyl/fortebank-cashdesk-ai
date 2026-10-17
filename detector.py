@@ -228,12 +228,18 @@ class BankViolationDetector:
 
     def get_evidence_frames(self, cap, t_sec, duration, count=2):
         frames = []
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if not fps or fps <= 0 or np.isnan(fps):
+            fps = 25.0
         offsets = [-0.5, 0.0, 1.0] if count == 3 else [0.0, 1.0]
         for dt in offsets:
             t = max(0.0, min(duration - 0.1, t_sec + dt))
             cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
             ret, frame = cap.read()
-            if ret:
+            if not ret or frame is None:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int(t * fps))
+                ret, frame = cap.read()
+            if ret and frame is not None:
                 frames.append({
                     "timestamp_sec": round(float(t), 1),
                     "image_base64": frame_to_base64(frame)
