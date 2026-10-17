@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Large binaries & media files
+*.mov
+*.mp4
+*.avi
+*.mkv
+*.zip
+*.tar.gz
+*.exe
+videos/
+uploads/
+annotated_videos/
+
+# Model weights (auto-downloaded on launch)
+*.pt
+*.bin
+*.safetensors
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+~$*.xlsx

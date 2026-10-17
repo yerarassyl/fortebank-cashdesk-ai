@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForteBank — Контроль кассовой дисциплины AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* ForteBank Official Brand Tokens */
+            --forte-burgundy: #9c1c54;
+            --forte-dark-wine: #74113e;
+            --forte-light-wine: #fdf2f7;
+            --forte-border-wine: #f9d8e6;
+            
+            /* Clean Trust Neutral Palette */
+            --bg-canvas: #f8fafc;
+            --bg-surface: #ffffff;
+            --text-heading: #0f172a;
+            --text-body: #334155;
+            --text-muted: #64748b;
+            --border-subtle: #e2e8f0;
+            --border-focus: #cbd5e1;
+
+            /* Severity & Status Colors */
+            --danger-bg: #fef2f2;
+            --danger-text: #991b1b;
+            --danger-border: #fecaca;
+            --danger-accent: #dc2626;
+
+            --success-bg: #f0fdf4;
+            --success-text: #166534;
+            --success-border: #bbf7d0;
+            --success-accent: #16a34a;
+
+            --navy-badge: #1e293b;
+            
+            /* Radius & Layout Scale */
+            --radius-lg: 12px;
+            --radius-md: 8px;
+            --radius-pill: 9999px;
+            --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+            --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-canvas);
+            color: var(--text-body);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.5;
+        }
+
+        /* HEADER */
+        header {
+            background: var(--bg-surface);
+            border-bottom: 2px solid var(--forte-burgundy);
+            padding: 14px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand-logo-text {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--forte-burgundy);
+            letter-spacing: -0.8px;
+            text-transform: lowercase;
+            line-height: 1;
+        }
+
+        .brand-divider {
+            height: 24px;
+            width: 1px;
+            background-color: var(--border-subtle);
+        }
+
+        .brand-subtitle {
+            font-size: 13.5px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        .header-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-pill {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: var(--radius-pill);
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            background: var(--navy-badge);
+            color: #ffffff;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background-color: #22c55e;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+        }
+
+        /* MAIN WRAPPER */
+        main {
+            flex: 1;
+            max-width: 1380px;
+            width: 100%;
+            margin: 24px auto;
+            padding: 0 24px;
+        }
+
+        .page-intro {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .page-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-heading);
+            letter-spacing: -0.3px;
+        }
+
+        .page-description {
+            font-size: 13.5px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* GRID SYSTEM */
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 460px 1fr;
+            gap: 24px;
+            align-items: start;
+        }
+
+        @media (max-width: 1080px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* CARD ARCHITECTURE */
+        .panel-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .panel-heading {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-heading);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* UPLOAD ZONE */
+        .upload-dropzone {
+            border: 2px dashed var(--border-focus);
+            border-radius: var(--radius-md);
+            padding: 32px 18px;
+            text-align: center;
+            background: #fafbfc;
+            cursor: pointer;
+            transition: all 0.15s ease-in-out;
+        }
+
+        .upload-dropzone:hover, .upload-dropzone.dragover {
+            border-color: var(--forte-burgundy);
+            background: var(--forte-light-wine);
+        }
+
+        .dropzone-icon {
+            font-size: 38px;
+            margin-bottom: 10px;
+            color: var(--forte-burgundy);
+        }
+
+        .dropzone-label {
+            font-size: 14.5px;
+            font-weight: 600;
+            color: var(--text-heading);
+            margin-bottom: 4px;
+        }
+
+        .dropzone-hint {
+            font-size: 12.5px;
+            color: var(--text-muted);
+        }
+
+        /* FORM ELEMENTS */
+        .input-group {
+            margin-top: 16px;
+        }
+
+        .input-label {
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--text-heading);
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .text-input {
+            width: 100%;
+            padding: 9px 12px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-subtle);
+            font-size: 13.5px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-heading);
+            background: var(--bg-surface);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .text-input:focus {
+            border-color: var(--forte-burgundy);
+            box-shadow: 0 0 0 2px rgba(156, 28, 84, 0.1);
+        }
+
+        /* CTA BUTTON */
+        .btn-primary {
+            width: 100%;
+            background: var(--forte-burgundy);
+            color: #ffffff;
+            padding: 12px 18px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 18px;
+            transition: background 0.15s, transform 0.05s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary:hover {
+            background: var(--forte-dark-wine);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.99);
+        }
+
+        .btn-primary:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* VIDEO CANVAS CONTAINER */
+        .player-container {
+            margin-top: 18px;
+            display: none;
+            background: #000000;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 1px solid #1e293b;
+        }
+
+        video {
+            width: 100%;
+            display: block;
+            max-height: 380px;
+            background: #000;
+        }
+
+        .timeline-bar {
+            height: 6px;
+            background: #334155;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .timeline-progress {
+            height: 100%;
+            background: var(--forte-burgundy);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .timeline-marker {
+            position: absolute;
+            top: -3px;
+            width: 12px;
+            height: 12px;
+            background: #ef4444;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            transform: translateX(-50%);
+            cursor: pointer;
+            box-shadow: 0 0 6px rgba(239, 68, 68, 0.8);
+        }
+
+        /* VERDICT DISPLAY */
+        .verdict-box {
+            padding: 16px 20px;
+            border-radius: var(--radius-md);
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .verdict-box.violation {
+            background: var(--danger-bg);
+            border: 1px solid var(--danger-border);
+            color: var(--danger-text);
+            display: flex;
+        }
+
+        .verdict-box.no_violation {
+            background: var(--success-bg);
+            border: 1px solid var(--success-border);
+            color: var(--success-text);
+            display: flex;
+        }
+
+        .verdict-icon {
+            font-size: 26px;
+            line-height: 1;
+        }
+
+        .verdict-title {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+        }
+
+        .verdict-subtitle {
+            font-size: 12.5px;
+            margin-top: 2px;
+            opacity: 0.9;
+        }
+
+        /* VIOLATION CARD */
+        .violation-card {
+            border: 1px solid var(--border-subtle);
+            border-left: 4px solid var(--danger-accent);
+            border-radius: var(--radius-md);
+            background: #ffffff;
+            padding: 18px;
+            margin-bottom: 16px;
+            transition: box-shadow 0.15s;
+        }
+
+        .violation-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .violation-topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .violation-name {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: var(--text-heading);
+        }
+
+        .timecode-tag {
+            background: #f1f5f9;
+            color: var(--text-heading);
+            border: 1px solid var(--border-subtle);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: var(--radius-pill);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .timecode-tag:hover {
+            background: var(--forte-burgundy);
+            color: #ffffff;
+            border-color: var(--forte-burgundy);
+        }
+
+        .violation-body {
+            font-size: 13.5px;
+            color: var(--text-body);
+            line-height: 1.55;
+            margin-bottom: 14px;
+        }
+
+        .evidence-strip {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            align-items: center;
+        }
+
+        .evidence-image {
+            width: 140px;
+            height: 90px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid var(--border-subtle);
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+
+        .evidence-image:hover {
+            transform: scale(1.03);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .law-card {
+            background: #f8fafc;
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: #1e293b;
+            line-height: 1.5;
+        }
+
+        .law-card strong {
+            color: var(--forte-burgundy);
+            font-weight: 600;
+        }
+
+        /* SPINNER LOADER */
+        .spinner-container {
+            display: none;
+            text-align: center;
+            padding: 48px 24px;
+        }
+
+        .spinner-ring {
+            width: 42px;
+            height: 42px;
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid var(--forte-burgundy);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-placeholder {
+            text-align: center;
+            padding: 56px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 44px;
+            margin-bottom: 12px;
+            opacity: 0.6;
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-img {
+            max-width: 90%;
+            max-height: 85vh;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-modal);
+            border: 2px solid #ffffff;
+        }
+
+        /* SAMPLES SELECTOR */
+        .sample-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn-sample {
+            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-subtle);
+            background: #ffffff;
+            color: var(--text-body);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-sample:hover {
+            border-color: var(--forte-burgundy);
+            color: var(--forte-burgundy);
+            background: var(--forte-light-wine);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-brand">
+            <span class="brand-logo-text">forte</span>
+            <div class="brand-divider"></div>
+            <span class="brand-subtitle">AI-Сервис выявления нарушений кассовой дисциплины (Datathon 26)</span>
+        </div>
+        <div class="header-meta">
+            <span class="status-pill">
+                <span class="status-dot"></span>
+                <span>VLM Core Active (NVIDIA RTX 3060)</span>
+            </span>
+        </div>
+    </header>
+
+    <main>
+        <div class="page-intro">
+            <div>
+                <h1 class="page-title">Автоматизированный видеоаудит кассовых операций</h1>
+                <p class="page-description">Потоковый анализ видеозаписей, детекция инцидентов и сопоставление с нормативными актами НБРК</p>
+            </div>
+        </div>
+
+        <div class="grid-layout">
+            
+            <!-- LEFT COLUMN: CONTROLS & VIDEO -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <span class="panel-heading">Загрузка видеозаписи</span>
+                </div>
+
+                <div class="upload-dropzone" id="dropZone" onclick="document.getElementById('videoFileInput').click()">
+                    <div class="dropzone-icon">📁</div>
+                    <div class="dropzone-label" id="dropLabel">Выберите или перетащите .mov видео</div>
+                    <div class="dropzone-hint">Поддерживаются форматы .mov, .mp4 до 100 МБ</div>
+                    <input type="file" id="videoFileInput" accept=".mov,.mp4" style="display: none;" onchange="handleFileChange(event)">
+                </div>
+
+                <div class="input-group">
+                    <label class="input-label">Ключ доступа жюри (X-API-Key):</label>
+                    <input type="text" id="apiKeyInput" class="text-input" value="forte-secret-key-2026">
+                </div>
+
+                <button class="btn-primary" id="startBtn" onclick="runInspection()" disabled>
+                    Начать проверку безопасности
+                </button>
+
+                <!-- VIDEO PLAYER -->
+                <div class="player-container" id="playerWrapper">
+                    <video id="videoElement" controls></video>
+                    <div class="timeline-bar" id="timelineBar" onclick="seekByBar(event)">
+                        <div class="timeline-progress" id="timelineProgress"></div>
+                        <div id="markersArea"></div>
+                    </div>
+                </div>
+
+                <!-- QUICK TEST PRESETS -->
+                <div style="margin-top: 20px; border-top: 1px solid var(--border-subtle); padding-top: 14px;">
+                    <span class="input-label">Быстрый выбор из датасета ForteBank:</span>
+                    <div class="sample-buttons">
+                        <button class="btn-sample" onclick="loadSample('X-1.mov')">X-1 (Нарушение: 22с)</button>
+                        <button class="btn-sample" onclick="loadSample('X-20.mov')">X-20 (Уход кассира: 5с)</button>
+                        <button class="btn-sample" onclick="loadSample('X-4.mov')">X-4 (Деньги на столе: 57с)</button>
+                        <button class="btn-sample" onclick="loadSample('X-3.mov')">X-3 (Штатно / Без нарушений)</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: AUDIT REPORT -->
+            <div class="panel-card">
+                <div class="panel-header">
+                    <span class="panel-heading">Протокол проверки</span>
+                    <span id="auditBadge" style="font-size: 12.5px; color: var(--text-muted);">Ожидание видео</span>
+                </div>
+
+                <!-- VERDICT HEADER -->
+                <div class="verdict-box" id="verdictBox">
+                    <span class="verdict-icon" id="verdictEmoji"></span>
+                    <div>
+                        <div class="verdict-title" id="verdictMainText"></div>
+                        <div class="verdict-subtitle" id="verdictSubText"></div>
+                    </div>
+                </div>
+
+                <!-- LOADER -->
+                <div class="spinner-container" id="spinnerWrapper">
+                    <div class="spinner-ring"></div>
+                    <div style="font-size: 14px; font-weight: 600; color: var(--text-heading); margin-bottom: 4px;">Обработка видео нейросетью...</div>
+                    <div style="font-size: 12.5px; color: var(--text-muted);">Модель Qwen2-VL анализирует видеоряд и сопоставляет с нормами НБРК</div>
+                </div>
+
+                <!-- VIOLATIONS LIST -->
+                <div id="violationsContainer">
+                    <div class="empty-placeholder" id="emptyPlaceholder">
+                        <div class="empty-icon">🛡️</div>
+                        <div style="font-size: 14px; font-weight: 600; color: var(--text-heading); margin-bottom: 4px;">Аудит не запущен</div>
+                        <div style="font-size: 13px; color: var(--text-muted);">Загрузите видеозапись кассы для формирования экспертного отчета</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- FULLSCREEN EVIDENCE MODAL -->
+    <div class="modal-overlay" id="modalOverlay" onclick="closeImageModal()">
+        <img class="modal-img" id="modalImagePreview" alt="Кадр-доказательство">
+    </div>
+
+    <script>
+        let currentFile = null;
+        let activePolling = null;
+
+        const dropZone = document.getElementById('dropZone');
+        const dropLabel = document.getElementById('dropLabel');
+        const startBtn = document.getElementById('startBtn');
+        const videoElement = document.getElementById('videoElement');
+        const playerWrapper = document.getElementById('playerWrapper');
+        const timelineProgress = document.getElementById('timelineProgress');
+        const markersArea = document.getElementById('markersArea');
+        const spinnerWrapper = document.getElementById('spinnerWrapper');
+        const verdictBox = document.getElementById('verdictBox');
+        const verdictEmoji = document.getElementById('verdictEmoji');
+        const verdictMainText = document.getElementById('verdictMainText');
+        const verdictSubText = document.getElementById('verdictSubText');
+        const violationsContainer = document.getElementById('violationsContainer');
+        const emptyPlaceholder = document.getElementById('emptyPlaceholder');
+        const auditBadge = document.getElementById('auditBadge');
+
+        // Drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                assignFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        function handleFileChange(e) {
+            if (e.target.files.length) {
+                assignFile(e.target.files[0]);
+            }
+        }
+
+        function assignFile(file) {
+            currentFile = file;
+            dropLabel.innerText = `${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} МБ)`;
+            startBtn.disabled = false;
+
+            const url = URL.createObjectURL(file);
+            videoElement.src = url;
+            playerWrapper.style.display = 'block';
+
+            // Reset verdict & results
+            verdictBox.style.display = 'none';
+            violationsContainer.innerHTML = '';
+            violationsContainer.appendChild(emptyPlaceholder);
+            emptyPlaceholder.style.display = 'block';
+            auditBadge.innerText = 'Файл готов к запуску';
+            markersArea.innerHTML = '';
+        }
+
+        async function loadSample(fileName) {
+            auditBadge.innerText = `Загрузка примера ${fileName}...`;
+            try {
+                // Fetch sample video from server
+                const res = await fetch(`/videos/${fileName}`);
+                if (!res.ok) {
+                    alert('Файл примера доступен в локальной папке videos/');
+                    return;
+                }
+                const blob = await res.blob();
+                const file = new File([blob], fileName, { type: 'video/mp4' });
+                assignFile(file);
+            } catch (err) {
+                console.error('Sample loading error', err);
+            }
+        }
+
+        // Timeline sync
+        videoElement.addEventListener('timeupdate', () => {
+            if (videoElement.duration) {
+                const pct = (videoElement.currentTime / videoElement.duration) * 100;
+                timelineProgress.style.width = pct + '%';
+            }
+        });
+
+        function seekByBar(e) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            if (videoElement.duration) {
+                videoElement.currentTime = pos * videoElement.duration;
+            }
+        }
+
+        async function runInspection() {
+            if (!currentFile) return;
+            const apiKey = document.getElementById('apiKeyInput').value.trim();
+
+            startBtn.disabled = true;
+            emptyPlaceholder.style.display = 'none';
+            spinnerWrapper.style.display = 'block';
+            verdictBox.style.display = 'none';
+            violationsContainer.innerHTML = '';
+            auditBadge.innerText = 'Нейросетевой анализ...';
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+
+            try {
+                const response = await fetch('/api/v1/analyze', {
+                    method: 'POST',
+                    headers: { 'X-API-Key': apiKey },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Ошибка отправки файла');
+                }
+
+                const data = await response.json();
+                const jobId = data.job_id;
+                auditBadge.innerText = `Обработка задачи #${jobId}`;
+
+                pollJobStatus(jobId, apiKey);
+
+            } catch (err) {
+                spinnerWrapper.style.display = 'none';
+                startBtn.disabled = false;
+                auditBadge.innerText = 'Ошибка';
+                alert('Ошибка: ' + err.message);
+            }
+        }
+
+        function pollJobStatus(jobId, apiKey) {
+            if (activePolling) clearInterval(activePolling);
+
+            activePolling = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/v1/jobs/${jobId}`, {
+                        headers: { 'X-API-Key': apiKey }
+                    });
+                    if (!res.ok) return;
+
+                    const data = await res.json();
+                    if (data.status === 'done') {
+                        clearInterval(activePolling);
+                        spinnerWrapper.style.display = 'none';
+                        startBtn.disabled = false;
+                        auditBadge.innerText = 'Аудит завершен';
+                        displayResults(data);
+                    } else if (data.status === 'failed') {
+                        clearInterval(activePolling);
+                        spinnerWrapper.style.display = 'none';
+                        startBtn.disabled = false;
+                        auditBadge.innerText = 'Сбой анализа';
+                        alert('Ошибка: ' + (data.error || 'неизвестный сбой'));
+                    }
+                } catch (e) {
+                    console.error('Polling error', e);
+                }
+            }, 1000);
+        }
+
+        function displayResults(data) {
+            const isViolation = data.verdict === 'violation';
+
+            verdictBox.className = 'verdict-box ' + data.verdict;
+            if (isViolation) {
+                verdictEmoji.innerText = '⚠️';
+                verdictMainText.innerText = 'ОБНАРУЖЕНЫ ПРИЗНАКИ ВОЗМОЖНЫХ НАРУШЕНИЙ';
+                verdictSubText.innerText = `Зафиксировано инцидентов: ${data.violations ? data.violations.length : 0}. Требуется подтверждение контролером.`;
+            } else {
+                verdictEmoji.innerText = '✅';
+                verdictMainText.innerText = 'НАРУШЕНИЕ НЕ ОБНАРУЖЕНО';
+                verdictSubText.innerText = 'Кассовые процедуры проведены в штатном режиме согласно нормам НБРК.';
+            }
+            verdictBox.style.display = 'flex';
+
+            violationsContainer.innerHTML = '';
+            markersArea.innerHTML = '';
+
+            if (!isViolation || !data.violations || data.violations.length === 0) {
+                violationsContainer.innerHTML = `
+                    <div style="text-align: center; padding: 48px 20px; color: var(--success-text);">
+                        <div style="font-size: 36px; margin-bottom: 8px;">✓</div>
+                        <div style="font-weight: 700; font-size: 15px;">Полное соответствие регламенту</div>
+                        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Все действия в кадре безопасны и соответствуют требованиям кассового узла.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            data.violations.forEach((v, index) => {
+                // Place marker on timeline
+                if (videoElement.duration && v.timecode_sec) {
+                    const markerPct = (v.timecode_sec / videoElement.duration) * 100;
+                    const marker = document.createElement('div');
+                    marker.className = 'timeline-marker';
+                    marker.style.left = markerPct + '%';
+                    marker.title = `Инцидент на ${v.timecode_sec}с`;
+                    marker.onclick = (e) => {
+                        e.stopPropagation();
+                        seekTo(v.timecode_sec);
+                    };
+                    markersArea.appendChild(marker);
+                }
+
+                const card = document.createElement('div');
+                card.className = 'violation-card';
+
+                let evidenceHtml = '';
+                if (v.evidence_frames && v.evidence_frames.length > 0) {
+                    evidenceHtml = '<div class="evidence-strip">';
+                    v.evidence_frames.forEach(ef => {
+                        evidenceHtml += `<img src="data:image/jpeg;base64,${ef.image_base64}" class="evidence-image" title="Кадр-доказательство (${ef.timestamp_sec}с). Нажмите для увеличения" onclick="openImageModal(this.src)">`;
+                    });
+                    evidenceHtml += '</div>';
+                }
+
+                card.innerHTML = `
+                    <div class="violation-topbar">
+                        <div class="violation-name">№${index + 1}. ${v.type}</div>
+                        <div class="timecode-tag" onclick="seekTo(${v.timecode_sec})">⏱️ ${v.timecode_sec} сек</div>
+                    </div>
+                    <div class="violation-body">${v.description}</div>
+                    ${evidenceHtml}
+                `;
+
+                violationsContainer.appendChild(card);
+            });
+        }
+
+        function seekTo(seconds) {
+            if (videoElement) {
+                videoElement.currentTime = Math.max(0, seconds - 2);
+                videoElement.play();
+                playerWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function openImageModal(imgSrc) {
+            document.getElementById('modalImagePreview').src = imgSrc;
+            document.getElementById('modalOverlay').style.display = 'flex';
+        }
+
+        function closeImageModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
