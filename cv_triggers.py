@@ -159,6 +159,9 @@ class PoseEventDetector:
             for b_idx, b in enumerate(boxes):
                 cx = (b[0] + b[2]) / 2
                 cy = (b[1] + b[3]) / 2
+                # Отсечение людей в смежном помещении/коридоре за стеклянной перегородкой (слева)
+                if cx < (width * 0.28):
+                    continue
                 box_diag = np.hypot(b[2] - b[0], b[3] - b[1])
                 match_threshold = max(80, box_diag * 0.7)
 
