@@ -95,36 +95,50 @@ class PoseEventDetector:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # 1. Быстрое чтение кадров
-        sampled_frames = []
+        # 1-2. Потоковое чтение кадров и батч-инференс YOLO Pose: в памяти не больше batch_size кадров
+        # (раньше все кадры видео держались в RAM — ~1 ГБ на 2.5-минутном ролике)
         sampled_secs = []
+        all_boxes = []
+        all_kpts = []
+        batch = []
+
+        def flush():
+            for p in self.model.predict(batch, conf=0.35, device=self.device, verbose=False):
+                all_boxes.append(p.boxes.xyxy.cpu().numpy() if p.boxes is not None else [])
+                all_kpts.append(p.keypoints.data.cpu().numpy() if p.keypoints is not None else [])
+            batch.clear()
+
         f_idx = 0
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             if f_idx % step_frames == 0:
-                sampled_frames.append(frame)
+                batch.append(frame)
                 sampled_secs.append(f_idx / fps)
+                if len(batch) == batch_size:
+                    flush()
             f_idx += 1
         cap.release()
+        if batch:
+            flush()
 
-        if not sampled_frames:
+        if not sampled_secs:
             return []
 
         fps_sample = fps / step_frames if step_frames > 0 else 6.0
         min_stable_hits = max(3, int(min_stable_sec * fps_sample))
         max_miss_frames = max(2, int(max_lost_sec * fps_sample))
 
-        # 2. Высокоскоростной батч-инференс YOLO Pose
-        all_boxes = []
-        all_kpts = []
-        for b_start in range(0, len(sampled_frames), batch_size):
-            batch = sampled_frames[b_start : b_start + batch_size]
-            batch_preds = self.model.predict(batch, conf=0.35, device=self.device, verbose=False)
-            for p in batch_preds:
-                all_boxes.append(p.boxes.xyxy.cpu().numpy() if p.boxes is not None else [])
-                all_kpts.append(p.keypoints.data.cpu().numpy() if p.keypoints is not None else [])
+        # Рабочая зона для VLM: по вертикали объединение рамок людей по всему видео + запас 25%
+        # (без хардкода координат — вычисляется по каждому видео, подходит для другого ракурса)
+        ys = [(b[1], b[3]) for frame_boxes in all_boxes for b in frame_boxes]
+        if ys:
+            y1, y2 = min(y for y, _ in ys), max(y for _, y in ys)
+            pad = 0.25 * (y2 - y1)
+            self.last_roi = (0, int(max(0, y1 - pad)), width, int(min(height, y2 + pad)))
+        else:
+            self.last_roi = (0, 0, width, height)
 
         # 3. Временной трекер с подавлением отражений
         tracks = {}

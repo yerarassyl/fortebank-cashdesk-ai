@@ -1,19 +1,18 @@
 import os
-import re
 import cv2
 import torch
 import base64
 import numpy as np
-import pandas as pd
 from PIL import Image
-from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
-from qwen_vl_utils import process_vision_info
+from transformers import AutoModelForImageTextToText, AutoProcessor, BitsAndBytesConfig
 from legal_base import LEGAL_ARTICLES_RK
-from vlm_prompts import build_messages, parse_vlm_response
+from vlm_prompts import QUESTIONS, QUESTION_SUFFIX, questions_for, decide
 from cv_triggers import PoseEventDetector
 
-def normalize_name(s):
-    return str(s).strip().replace('Х', 'X').replace('х', 'x').lower()
+DEFAULT_VLM = os.getenv("FORTE_VLM_MODEL", "Qwen/Qwen3-VL-2B-Instruct")
+FALLBACK_WINDOW_SEC = 20.0   # сплошные окна, если CV не нашел ни одного триггера
+DEDUP_SEC = 10.0             # одно и то же нарушение из соседних окон считается одним
+
 
 def frame_to_base64(cv2_frame, max_size=720, quality=85):
     h, w = cv2_frame.shape[:2]
@@ -23,250 +22,165 @@ def frame_to_base64(cv2_frame, max_size=720, quality=85):
     _, buffer = cv2.imencode('.jpg', cv2_frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     return base64.b64encode(buffer).decode('utf-8')
 
+
 class BankViolationDetector:
-    def __init__(self, model_name="Qwen/Qwen2-VL-2B-Instruct"):
+    def __init__(self, model_name=DEFAULT_VLM):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.dtype = torch.float16 if self.device == "cuda" else torch.float32
-        
+        kwargs = {"device_map": self.device}
+        if self.device == "cuda":
+            # 4-bit: модель на 2-4 млрд параметров помещается в видеокарту на 4 ГБ
+            kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.float16)
+            kwargs["dtype"] = torch.float16  # неквантованные слои тоже в fp16 (без bf16-путей cuBLAS)
+        else:
+            kwargs["dtype"] = torch.float32
+
         try:
             self.processor = AutoProcessor.from_pretrained(model_name, local_files_only=True)
-            self.model = Qwen2VLForConditionalGeneration.from_pretrained(
-                model_name,
-                torch_dtype=self.dtype,
-                device_map=self.device,
-                local_files_only=True
-            )
+            self.model = AutoModelForImageTextToText.from_pretrained(model_name, local_files_only=True, **kwargs)
         except Exception:
             print(f"[Detector] Локальный кэш не найден. Загрузка {model_name} из Hugging Face Hub...")
             self.processor = AutoProcessor.from_pretrained(model_name)
-            self.model = Qwen2VLForConditionalGeneration.from_pretrained(
-                model_name,
-                torch_dtype=self.dtype,
-                device_map=self.device
-            )
-        print("[Detector] VLM модель успешно загружена!")
-        
-        # Инициализация детектора событий на базе YOLO Pose (Temporal Stability Tracker)
+            self.model = AutoModelForImageTextToText.from_pretrained(model_name, **kwargs)
+        self.processor.tokenizer.padding_side = "left"
+        tok = self.processor.tokenizer
+        self.yes_ids = sorted({tok.encode(w, add_special_tokens=False)[0] for w in ("Да", "да", "Yes", "yes")})
+        self.no_ids = sorted({tok.encode(w, add_special_tokens=False)[0] for w in ("Нет", "нет", "No", "no")})
+        print(f"[Detector] VLM {model_name} загружена ({self.device})")
+
         self.pose_detector = PoseEventDetector()
         print("[Detector] PoseEventDetector готов к быстрому сканированию видео!")
+        self.last_debug = []
 
-        # Предварительно загруженная разметка обучающего датасета для мгновенной валидации
-        self.dataset_cache = {}
-        self._load_dataset_cache()
+    @torch.no_grad()
+    def _score_batch(self, img, qids):
+        texts = [
+            self.processor.apply_chat_template(
+                [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": QUESTIONS[q] + QUESTION_SUFFIX}]}],
+                tokenize=False, add_generation_prompt=True)
+            for q in qids
+        ]
+        inputs = self.processor(text=texts, images=[img] * len(texts), padding=True, return_tensors="pt").to(self.model.device)
+        # logits_to_keep=1: считаем распределение только для последнего токена — экономит видеопамять
+        probs = torch.softmax(self.model(**inputs, logits_to_keep=1).logits[:, -1].float(), -1)
+        yes, no = probs[:, self.yes_ids].sum(-1), probs[:, self.no_ids].sum(-1)
+        return (yes / (yes + no + 1e-9)).tolist()
 
-    def _load_dataset_cache(self):
-        excel_path = "open_labels_with_descriptions.xlsx"
-        if os.path.exists(excel_path):
+    def _score(self, img, qids, chunk=6):
+        """P(Да) для каждого вопроса по одному кадру; вопросы порциями, при нехватке видеопамяти порция уменьшается."""
+        out, i = [], 0
+        while i < len(qids):
+            part = qids[i:i + chunk]
             try:
-                df = pd.read_excel(excel_path)
-                for _, r in df.iterrows():
-                    name = normalize_name(r['наименование файла'])
-                    status = str(r['нарушение / без нарушения']).strip()
-                    ts_raw = r['таймстемп']
-                    desc = r.get('описание нарушения (VLM Qwen2-VL)', '')
-                    
-                    is_viol = ('нарушен' in status.lower()) and ('без' not in status.lower())
-                    sec = self._parse_sec(ts_raw) if is_viol else None
-                    self.dataset_cache[name] = {
-                        "is_violation": is_viol,
-                        "timecode_sec": sec,
-                        "vlm_desc": str(desc) if pd.notna(desc) else ""
-                    }
-                print(f"[Detector] Кэш датасета успешно загружен: {len(self.dataset_cache)} видео")
-            except Exception as e:
-                print(f"[Detector] Предупреждение при загрузке кэша: {e}")
+                out += self._score_batch(img, part)
+                i += len(part)
+            except torch.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                if chunk == 1:
+                    raise
+                chunk = max(1, chunk // 2)
+        return out
 
-    def _parse_sec(self, ts_str):
-        if pd.isna(ts_str):
-            return 10.0
-        s = str(ts_str).lower().strip()
-        m_min = re.search(r'(\d+)\s*мин', s)
-        m_sec = re.search(r'(\d+)\s*сек', s)
-        minutes = int(m_min.group(1)) if m_min else 0
-        seconds = int(m_sec.group(1)) if m_sec else 0
-        if not m_min and not m_sec:
-            m = re.search(r'(\d+(?:\.\d+)?)', s)
-            if m:
-                return float(m.group(1))
-            return 10.0
-        return float(minutes * 60 + seconds)
+    @torch.no_grad()
+    def _describe(self, img):
+        """Короткое описание кадра-доказательства (что видно), без выводов о нарушении."""
+        msgs = [{"role": "user", "content": [{"type": "image", "image": img},
+                 {"type": "text", "text": "Одним предложением опиши, что делает кассир и что лежит на столе."}]}]
+        inputs = self.processor.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True,
+                                                    return_dict=True, return_tensors="pt").to(self.model.device)
+        out = self.model.generate(**inputs, max_new_tokens=48, do_sample=False)
+        return self.processor.batch_decode(out[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True)[0].strip()
 
     def analyze_file(self, video_path, filename=None):
         """
-        Анализирует видеофайл и возвращает результат в строгом формате ТЗ:
-        {
-          "verdict": "no_violation" | "violation",
-          "violations": [
-             {
-               "type": "...",
-               "timecode_sec": 44.2,
-               "description": "...",
-               "evidence_frames": [
-                 { "timestamp_sec": 44.2, "image_base64": "..." }
-               ]
-             }
-          ]
-        }
+        Анализирует видеофайл и возвращает результат в формате раздела 10 ТЗ:
+        {"verdict": "no_violation" | "violation", "violations": [{type, timecode_sec, description, evidence_frames}]}
         """
-        base_name = normalize_name(os.path.splitext(filename or os.path.basename(video_path))[0])
-        
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise ValueError(f"Невозможно открыть видео: {video_path}")
-            
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if fps <= 0 or total_frames <= 0:
             cap.release()
             raise ValueError("Некорректный FPS или число кадров в видеофайле")
-            
         duration = total_frames / fps
 
-        # Проверка по предварительно размеченному датасету (для видео из обучающей выборки)
-        target_sec = None
-        known_violation = None
-        if base_name in self.dataset_cache:
-            info = self.dataset_cache[base_name]
-            if not info["is_violation"]:
-                cap.release()
-                return {
-                    "verdict": "no_violation",
-                    "violations": []
-                }
-            target_sec = info["timecode_sec"]
-            known_violation = info
+        # 1. CV-триггеры (YOLO Pose + temporal tracker), окна покрывают подозрительные участки
+        events = self.pose_detector.detect_video_events(video_path)
+        roi = getattr(self.pose_detector, "last_roi", None)
+        if not events:
+            starts = np.arange(0.0, max(duration, 0.1), FALLBACK_WINDOW_SEC)
+            events = [{"timecode_sec": float(min(s + FALLBACK_WINDOW_SEC / 2, duration)), "trigger": "INITIAL_DESK_CHECK",
+                       "window_start_sec": float(s), "window_end_sec": float(min(s + FALLBACK_WINDOW_SEC, duration)),
+                       "merged_triggers": ["INITIAL_DESK_CHECK"]} for s in starts]
 
-        # Определение временных окон для проверки
-        if target_sec is not None:
-            windows = [(target_sec, max(0.0, target_sec - 5.0), min(duration, target_sec + 5.0), None)]
-        else:
-            # Для нового видео извлекаем макро-события через YOLO Pose (Temporal Tracking)
-            events = self.pose_detector.detect_video_events(video_path)
-            if not events:
-                cap.release()
-                return {
-                    "verdict": "no_violation",
-                    "violations": []
-                }
-            # Каждый оставшийся триггер покрывает окно подавленных соседей — VLM смотрит его целиком
-            windows = [
-                (
-                    ev["timecode_sec"],
-                    ev.get("window_start_sec", max(0.0, ev["timecode_sec"] - 3.5)),
-                    ev.get("window_end_sec", min(duration, ev["timecode_sec"] + 3.5)),
-                    ev.get("prompt_focus")
-                )
-                for ev in events
-            ]
+        found = []
+        self.last_debug = []
+        for ev in events:
+            center = ev["timecode_sec"]
+            start = ev.get("window_start_sec", max(0.0, center - 3.5))
+            end = ev.get("window_end_sec", min(duration, center + 3.5))
+            triggers = ev.get("merged_triggers") or [ev["trigger"]]
 
-        violations = []
-
-        for center_t, start_t, end_t, event_prompt in windows:
-            # ~1 кадр на 2с окна: 6 кадров для коротких окон, до 10 для широких (четное число для Qwen2-VL)
-            n_frames = int(min(10, max(6, 2 * round((end_t - start_t) / 4))))
-            t_points = np.linspace(start_t, end_t, n_frames)
-            frames_pil = []
-            frames_cv2 = []
-
+            # 2. Кадры: равномерно по окну + вплотную к моменту триггера (короткие действия)
+            t_points = sorted({round(float(t), 1) for t in list(np.linspace(start, end, 5)) + [center - 1, center, center + 1]
+                               if 0 <= t < duration - 0.05})
+            frames = []
             for t in t_points:
                 cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
-                ret, frame = cap.read()
-                if ret:
-                    frames_cv2.append((t, frame))
-                    h, w = frame.shape[:2]
-                    scale = 448 / max(h, w)
-                    resized = cv2.resize(frame, (int(w * scale), int(h * scale)))
-                    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-                    frames_pil.append((t, Image.fromarray(rgb)))
-
-            if not frames_pil:
+                ok, frame = cap.read()
+                if not ok:
+                    continue
+                x1, y1, x2, y2 = roi or (0, 0, frame.shape[1], frame.shape[0])
+                crop = cv2.cvtColor(frame[y1:y2, x1:x2], cv2.COLOR_BGR2RGB)
+                frames.append((t, frame, Image.fromarray(crop)))
+            if not frames:
                 continue
 
-            messages = build_messages(frames_pil, start_t, end_t, event_prompt)
+            # 3. VLM: базовые вопросы + чек-листы триггеров окна, по каждому кадру
+            qids = questions_for(triggers)
+            per_frame = [self._score(img, qids) for _, _, img in frames]
+            scores = {q: [pf[i] for pf in per_frame] for i, q in enumerate(qids)}
+            self.last_debug.append({"triggers": triggers, "times": [t for t, _, _ in frames],
+                                    "scores": {q: [round(v, 3) for v in s] for q, s in scores.items()}})
 
-            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            image_inputs, video_inputs = process_vision_info(messages)
-            inputs = self.processor(
-                text=[text],
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
-                return_tensors="pt"
-            ).to(self.device)
-
-            with torch.no_grad():
-                generated_ids = self.model.generate(
-                    **inputs,
-                    max_new_tokens=200,
-                    do_sample=False
-                )
-            trimmed = [out[len(inp):] for inp, out in zip(inputs.input_ids, generated_ids)]
-            vlm_text = self.processor.batch_decode(trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0].strip()
-
-            parsed = parse_vlm_response(vlm_text, len(frames_cv2))
-            if parsed is None:
-                # VLM не вернула JSON — откат на прежнюю эвристику по ключевым словам
-                low = vlm_text.lower()
-                parsed = {
-                    "violation": ("штатно" not in low) and any(k in low for k in ["нарушен", "оставлен", "взял деньги", "без присмотра", "сейф", "переда"]),
-                    "type": self._classify_violation(vlm_text),
-                    "frame": len(frames_cv2) // 2 + 1,
-                    "observation": vlm_text.replace('\n', ' ')
-                }
-
-            is_viol = (known_violation is not None) or parsed["violation"]
-
-            if is_viol:
-                legal_data = LEGAL_ARTICLES_RK.get(parsed["type"] or "", LEGAL_ARTICLES_RK["OTHER"])
-
-                # Кадр, указанный VLM, и его соседи: 1-3 кадра-доказательства (раздел 10 ТЗ)
-                best_idx = (parsed["frame"] or len(frames_cv2) // 2 + 1) - 1
-                best_t = frames_cv2[best_idx][0]
-                ev_frames = [
-                    {"timestamp_sec": round(float(t), 1), "image_base64": frame_to_base64(f)}
-                    for t, f in frames_cv2[max(0, best_idx - 1): best_idx + 2]
-                ]
-
-                observation = parsed["observation"] or "VLM отметила признаки возможного нарушения на кадре."
-                full_description = (
-                    f"{observation.rstrip('.')}. "
-                    f"Норматив: {legal_data['law_source']}. "
-                    f"«{legal_data['law_quote']}»"
-                )
-
-                violations.append({
-                    "type": legal_data["type"],
-                    "timecode_sec": round(float(best_t), 1),
-                    "description": full_description,
-                    "evidence_frames": ev_frames
-                })
-
-                if target_sec is not None:
-                    break
+            # 4. Решение по правилам
+            for f in decide(scores, triggers):
+                t, full_frame, img = frames[f["frame"]]
+                found.append({**f, "t": t, "frame_idx": f["frame"], "frames": frames})
 
         cap.release()
 
-        return {
-            "verdict": "violation" if len(violations) > 0 else "no_violation",
-            "violations": violations
-        }
+        # 5. Одно нарушение одного типа из соседних окон — одна запись (самая уверенная)
+        found.sort(key=lambda f: -f["score"])
+        kept = []
+        for f in found:
+            if not any(k["code"] == f["code"] and abs(k["t"] - f["t"]) < DEDUP_SEC for k in kept):
+                kept.append(f)
+        kept.sort(key=lambda f: f["t"])
 
-    def _classify_violation(self, text):
-        t = text.lower()
-        if "клиент" in t and ("взял" in t or "стола" in t or "тянется" in t or "рука" in t):
-            return "CLIENT_DESK_ACCESS"
-        if "посторонн" in t or "третий" in t or "проник" in t:
-            return "THIRD_PERSON_INTRUSION"
-        if "пьет" in t or "вода" in t or "напиток" in t or "ест" in t or "пищ" in t or "рука у лица" in t:
-            return "FOOD_DRINK_AT_DESK"
-        if "после" in t and ("ушел" in t or "ухода" in t or "пересчит" in t):
-            return "COUNTING_AWAY_FROM_CLIENT"
-        if "сейф" in t or "замок" in t or "ключ" in t:
-            return "UNLOCKED_SAFE"
-        if "баул" in t or "сумк" in t or "инкассат" in t:
-            return "UNAUTHORIZED_ITEMS"
-        if "машинк" in t or "счет" in t or "лоток" in t or "подлинност" in t:
-            return "NO_COUNTING_MACHINE"
-        if "отвлек" in t or "разговор" in t or "телефон" in t:
-            return "CASHIER_DISTRACTED"
-        return "LEAVE_WORKPLACE"
+        violations = []
+        for f in kept:
+            legal = LEGAL_ARTICLES_RK.get(f["code"], LEGAL_ARTICLES_RK["OTHER"])
+            frames, i = f["frames"], f["frame_idx"]
+            evidence = [{"timestamp_sec": round(float(t), 1), "image_base64": frame_to_base64(fr)}
+                        for t, fr, _ in frames[max(0, i - 1): i + 2]]
+            seen = self._describe(frames[i][2])
+            description = (f"{f['observation']} Описание кадра {f['t']:.1f} с: {seen.rstrip('.')}. "
+                           f"Уверенность модели: {f['score']:.2f}. Норматив: {legal['law_source']}.")
+            if legal.get("law_quote"):
+                description += f" «{legal['law_quote']}»"
+            if legal.get("note"):
+                description += f" Примечание: {legal['note']}"
+            violations.append({
+                "type": legal["type"],
+                "timecode_sec": round(float(f["t"]), 1),
+                "description": description,
+                "evidence_frames": evidence,
+            })
+
+        return {
+            "verdict": "violation" if violations else "no_violation",
+            "violations": violations,
+        }
