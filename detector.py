@@ -17,6 +17,100 @@ def frame_to_base64(cv2_frame, max_size=720, quality=85):
     _, buffer = cv2.imencode('.jpg', cv2_frame, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     return base64.b64encode(buffer).decode('utf-8')
 
+# =============================================================================
+# ЭТАЛОННЫЙ КАТАЛОГ ВСЕХ ВОЗМОЖНЫХ НАРУШЕНИЙ КАССОВОЙ ДИСЦИПЛИНЫ FORTEBANK
+# =============================================================================
+ALL_VIOLATIONS_CATALOG_TEXT = """
+СПИСОК ВСЕХ ВОЗМОЖНЫХ НАРУШЕНИЙ КАССОВОЙ ДИСЦИПЛИНЫ:
+1. [FOOD_DRINK_AT_DESK] — Прием пищи или напитков: кассир держит чашку, кружку, стаканчик, бутылку или еду и пьет/ест на рабочем месте в кассе. (ПП НБРК № 231, п. 15)
+2. [CASHIER_DISTRACTED] — Использование смартфона: кассир держит телефон, смотрит в экран или пользуется телефоном за кассой. (ПП НБРК № 231, п. 12)
+3. [UNLOCKED_SAFE] — Нарушение режима сейфа: сейф позади кассира оставлен открытым / распахнутым, ключ оставлен в замке, либо кассир не убрала деньги в сейф. (ПП НБРК № 224, п. 31 / ПП № 231, п. 38)
+4. [LEAVE_WORKPLACE] — Оставление рабочего места без присмотра: кассир встала/ушла, оставив включенным незаблокированный экран ноутбука, либо документы и печать на столе. (ПП НБРК № 231, п. 38)
+5. [UNLOCKED_DOOR] — Нарушение безопасности кассовой кабины: входная дверь кассовой кабины оставлена открытой / распахнутой. (ПП НБРК № 224, п. 12)
+6. [THIRD_PERSON_INTRUSION] — Постороннее лицо в кассовом узле: посторонний человек зашел внутрь рабочей зоны кассы или подсматривает через плечо/дверь. (ПП НБРК № 231, п. 12, 14)
+7. [MULTIPLE_CLIENTS] — Нарушение тайны операций: одновременное нахождение нескольких клиентов у окна обслуживания. (ПП НБРК № 231, п. 14, 20)
+8. [MONEY_LEFT_BETWEEN_CLIENTS] — Оставление денежной наличности: на столе оставлена пачка денег без присмотра / деньги прошлого клиента при приеме следующего. (ПП НБРК № 231, п. 27, 38)
+9. [NO_ID_VERIFICATION] — Нарушение порядка приема/выдачи наличности: прием/выдача денег или инкассаторской сумки без проверки документов, либо пересчет вне видимости клиента после его ухода. (ПП НБРК № 231, п. 19, 23, 53)
+10. [NO_COUNTING_MACHINE] — Нарушение кассовой дисциплины: банкноты, отбракованные счетной машинкой, соединены с нормальной пачкой. (ПП НБРК № 231, п. 24)
+11. [CLIENT_DESK_ACCESS] — Нарушение возврата наличности клиенту: кассир не вернула сдачу клиенту или присвоила часть денег себе. (ПП НБРК № 231, п. 25, 27)
+12. [UNAUTHORIZED_ITEMS] — Нарушение чистоты рабочей зоны: на столе кассира лежит личный рюкзак, сумка, куртка или посторонние вещи. (ПП НБРК № 231, п. 15)
+"""
+
+VIOLATIONS_META = {
+    "FOOD_DRINK_AT_DESK": {
+        "title": "Прием пищи или напитков на рабочем месте",
+        "law": "Постановление Правления НБРК № 231, Глава 2, п. 12, 15",
+        "pos": ["food_drink_at_desk", "кружк", "чашк", "стаканчик", "бутылк", "напиток", "пьет", "ест"],
+        "neg": ["нет кружки", "нет чашки", "рука пустая", "рука абсолютно пустая", "без кружки", "без чашки", "пустая", "не держит", "не пьет", "ничего нет"]
+    },
+    "CASHIER_DISTRACTED": {
+        "title": "Использование смартфона кассиром на рабочем месте",
+        "law": "Постановление Правления НБРК № 231, Глава 2, п. 12",
+        "pos": ["cashier_distracted", "phone_usage", "смартфон", "телефон", "пользуется телефоном", "набирает текст"],
+        "neg": ["не пользуется телефоном", "нет телефона", "без телефона", "не держит телефон", "руки на столе", "на клавиатуре"]
+    },
+    "UNLOCKED_SAFE": {
+        "title": "Нарушение режима хранения ценностей: незапертый сейф",
+        "law": "Постановление Правления НБРК № 224, п. 31 / ПП № 231, п. 38",
+        "pos": ["unlocked_safe", "распахнута", "дверца открыта", "ключ торчит в замке", "ключ оставлен в замке", "открыт сейф", "не убрала в сейф", "не убраны в сейф"],
+        "neg": ["дверца закрыта", "сейф закрыт", "заперт", "не открыта", "нет ключа", "без ключа", "ключ не торчит", "ключа нет"]
+    },
+    "LEAVE_WORKPLACE": {
+        "title": "Оставление рабочего места без блокировки / ценностей",
+        "law": "Постановление Правления НБРК № 231, Глава 2, п. 38",
+        "pos": ["leave_workplace", "экран светится", "экран включен", "незаблокирован", "печать на столе", "документы на столе", "служебные документы"],
+        "neg": ["темную", "темная", "предмет", "выключен", "не светится", "закрыт", "стол чист", "нет документов"]
+    },
+    "UNLOCKED_DOOR": {
+        "title": "Нарушение безопасности кассовой кабины: открытая дверь",
+        "law": "Постановление Правления НБРК № 224, п. 12",
+        "pos": ["unlocked_door", "дверь открыта", "дверь распахнута", "оставлена открытой", "настежь", "распахнута"],
+        "neg": ["дверь закрыта", "закрыта", "заперта", "прикрыта", "не открыта"]
+    },
+    "THIRD_PERSON_INTRUSION": {
+        "title": "Нарушение пропускного режима: посторонний в кассовом узле",
+        "law": "Постановление Правления НБРК № 231, Глава 2, п. 12, 14",
+        "pos": ["third_person_intrusion", "два клиента", "двое клиентов", "три человека", "подсматривает", "заглядывает", "посторонний", "третий человек", "второй клиент", "зашел внутрь"],
+        "neg": ["нет посторонних", "один клиент", "один человек", "нельзя определить", "не видно"]
+    },
+    "MULTIPLE_CLIENTS": {
+        "title": "Нарушение тайны операций: несколько клиентов у окна",
+        "law": "Постановление Правления НБРК № 231, п. 14, 20",
+        "pos": ["multiple_clients", "два клиента", "двое клиентов", "несколько клиентов"],
+        "neg": ["один клиент", "нет клиентов"]
+    },
+    "MONEY_LEFT_BETWEEN_CLIENTS": {
+        "title": "Оставление денежной наличности без присмотра на столе",
+        "law": "Постановление Правления НБРК № 231, п. 27, 38",
+        "pos": ["money_left_between_clients", "лежат деньги", "пачка денег", "купюры", "наличные на столе", "на столе лежат", "деньги на столе", "остались неубранные деньги", "от предыдущего клиента"],
+        "neg": ["нет денег", "стол чист", "стол пустой", "убрала деньги в сейф", "денег нет", "не лежат", "без денег"]
+    },
+    "NO_ID_VERIFICATION": {
+        "title": "Нарушение порядка идентификации клиента / пересчета наличности",
+        "law": "Постановление Правления НБРК № 231, п. 19, 23, 53-55",
+        "pos": ["no_id_verification", "без проверки документов", "без паспорта", "удостак", "инкассаторский мешок", "зеленый мешок", "сразу выложена пачка денег", "пересчет вне поля зрения", "пересчитывает на машинке вне"],
+        "neg": ["проверила документы", "в поле зрения", "в присутствии клиента", "обычный клиент", "стол пустой", "нет мешка"]
+    },
+    "NO_COUNTING_MACHINE": {
+        "title": "Грубое нарушение кассовой дисциплины: объединение отбракованных купюр",
+        "law": "Постановление Правления НБРК № 231, Глава 3, п. 24",
+        "pos": ["no_counting_machine", "соединила", "смешала", "объединила отбракованные"],
+        "neg": ["не соединила", "не смешивала", "в порядке"]
+    },
+    "CLIENT_DESK_ACCESS": {
+        "title": "Нарушение регламента возврата наличности клиенту",
+        "law": "Постановление Правления НБРК № 231, п. 25, 27",
+        "pos": ["client_desk_access", "оставила себе часть", "спрятала часть денег", "убрала себе часть", "не отдала клиенту", "не вернула сдачу", "присвоила"],
+        "neg": ["вернула полностью", "отдала клиенту", "передала клиенту", "не присвоила", "сдала сдачу", "все отдала", "без нарушений", "передает через лоток"]
+    },
+    "UNAUTHORIZED_ITEMS": {
+        "title": "Нарушение чистоты рабочей зоны: посторонние вещи на столе",
+        "law": "Постановление Правления НБРК № 231, п. 15",
+        "pos": ["unauthorized_items", "лежит куртка", "на столе куртка", "куртка на столе", "снятая куртка", "одежда на столе", "лежит рюкзак", "большая сумка на столе", "инкассаторский мешок"],
+        "neg": ["нет куртки", "нет сумки", "без куртки", "без рюкзака", "чист", "ничего нет", "не лежит", "не обнаружено", "пустой", "стол чист"]
+    }
+}
+
 class BankViolationDetector:
     def __init__(self, model_name="Qwen/Qwen2-VL-2B-Instruct"):
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -33,7 +127,7 @@ class BankViolationDetector:
         self.pose_detector = PoseEventDetector()
         print("[BankViolationDetector] PoseEventDetector готов к высокоскоростному сканированию!")
 
-    def ask_vlm(self, image, prompt, max_new_tokens=80):
+    def ask_vlm(self, image, prompt, max_new_tokens=100):
         messages = [{'role': 'user', 'content': [{'type': 'image', 'image': image}, {'type': 'text', 'text': prompt}]}]
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         img_inputs, vid_inputs = process_vision_info(messages)
@@ -45,6 +139,44 @@ class BankViolationDetector:
         if any(r in ans_lower for r in ["извините, но я не могу", "моя функция - предоставлять информацию", "не имею возможности", "как текстовый ai"]):
             return "не определено (отказ модели)"
         return ans
+
+    def ask_vlm_for_violations(self, image, context_hint="", candidate_types=None):
+        """
+        УНИВЕРСАЛЬНЫЙ ПРОМПТ ВЫБОРА НАРУШЕНИЙ ИЗ ВСЕГО СПИСКА
+        Дает VLM выбрать одно или несколько нарушений из каталога всех возможных нарушений.
+        """
+        prompt = f"""Ты — объективный ИИ-ревизор службы безопасности и комплаенс-контроля ForteBank.
+Оцени обстановку и действия кассира и клиентов на этом кадре видеонаблюдения рабочего места кассы банка.
+{context_hint}
+
+{ALL_VIOLATIONS_CATALOG_TEXT}
+
+ИНСТРУКЦИЯ:
+- Если действия полностью штатные (кассир работает, руки свободны, считает деньги, сейф закрыт, стол чист) — ответь строго:
+ШТАТНО
+
+- Если на кадре зафиксировано нарушение(я) — выбери ОДНО ИЛИ НЕСКОЛЬКО нарушений ИСКЛЮЧИТЕЛЬНО ИЗ СПИСКА ВЫШЕ и укажи их в формате:
+НАРУШЕНИЕ: [КОД_НАРУШЕНИЯ] — <что именно видно на кадре>
+"""
+        ans = self.ask_vlm(image, prompt, max_new_tokens=120)
+        ans_lower = ans.lower()
+
+        detected = []
+        is_clean = "штатно" in ans_lower and "нарушение" not in ans_lower
+
+        if not is_clean:
+            check_keys = candidate_types if candidate_types else VIOLATIONS_META.keys()
+            for v_code in check_keys:
+                meta = VIOLATIONS_META.get(v_code)
+                if not meta:
+                    continue
+                has_code = f"[{v_code.lower()}]" in ans_lower or v_code.lower() in ans_lower
+                has_pos = any(w in ans_lower for w in meta["pos"])
+                has_neg = any(w in ans_lower for w in meta["neg"])
+                if (has_code or has_pos) and not has_neg:
+                    detected.append((v_code, meta["title"], meta["law"], ans))
+
+        return detected, ans
 
     def get_evidence_frames(self, cap, t_sec, duration, count=2):
         frames = []
@@ -82,9 +214,9 @@ class BankViolationDetector:
 
     def analyze_file(self, video_path, filename=None):
         """
-        ЧИСТЫЙ АЛГОРИТМИЧЕСКИЙ ИИ-АНАЛИЗ БЕЗ БЕЛЫХ СПИСКОВ И ХАРДКОДИНГА.
+        АЛГОРИТМИЧЕСКИЙ ИИ-АНАЛИЗ НА БАЗЕ ВЫБОРА НАРУШЕНИЙ ИЗ ПОЛНОГО КАТАЛОГА VLM.
         1. YOLO Pose сканирует биомеханику, перемещения и жесты кассира и клиентов.
-        2. Qwen2-VL визуально валидирует конкретные гипотезы регламента кассовых операций РК.
+        2. Qwen2-VL выбирает одно или несколько нарушений из полного списка регламента РК.
         """
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -103,101 +235,72 @@ class BankViolationDetector:
                     return True
             return False
 
+        def register_violation(v_code, t_time, desc, law_article):
+            if not is_duplicate(v_code, t_time):
+                ev_frames = self.get_evidence_frames(cap, t_time, duration)
+                detected_violations.append({
+                    "type": v_code,
+                    "timecode_sec": round(float(t_time), 1),
+                    "description": f"{desc}. Статья: {law_article}",
+                    "evidence_frames": ev_frames
+                })
+
         for ev in events:
             t_ev = ev["timecode_sec"]
             trig = ev["trigger"]
             merged = ev.get("merged_triggers", [trig])
 
             # =========================================================================
-            # Кейс 1: Напитки / Еда / Смартфон на рабочем месте (ПП НБРК № 231, п. 12, 15)
+            # Событие 1: Рука у лица / жестикуляция (ПП НБРК № 231, п. 12, 15)
             # =========================================================================
             if trig == "HAND_TO_MOUTH" or "HAND_TO_MOUTH" in merged:
                 t_check = min(duration - 0.5, t_ev + 3.0)
                 rgb = self.get_rgb_frame(cap, t_check, duration)
                 if rgb is not None:
-                    p = "Посмотри внимательно на руку у лица: держит ли человек чашку/кружку с напитком или рука абсолютно пустая?"
-                    ans = self.ask_vlm(Image.fromarray(rgb), p)
-                    ans_lower = ans.lower()
-
-                    pos_drink = ["видна кружка", "в руке кружка", "держит кружку", "есть кружка", "с кружкой", "видна чашка", "держит чашку", "чашка", "чашку", "кружка", "кружку", "пьет"]
-                    neg_drink = ["нет кружки", "нет чашки", "рука пустая", "рука абсолютно пустая", "нет никаких предметов", "без кружки", "без чашки", "пустая", "не держит", "ничего нет"]
-                    has_drink = any(p in ans_lower for p in pos_drink) and not any(n in ans_lower for n in neg_drink)
-
-                    if has_drink and not is_duplicate("FOOD_DRINK_AT_DESK", t_ev):
-                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                        detected_violations.append({
-                            "type": "FOOD_DRINK_AT_DESK",
-                            "timecode_sec": round(float(t_ev), 1),
-                            "description": f"Кассир употребляет напиток на рабочем месте ({ans}). Статья: Постановление Правления НБРК № 231, Глава 2, п. 12, 15",
-                            "evidence_frames": ev_frames
-                        })
-
-                    neg_phone = ["не пользуется телефоном", "нет телефона", "без телефона", "не держит телефон", "руки на столе", "на клавиатуре"]
-                    pos_phone = ["держит телефон", "держит смартфон", "смотрит в телефон", "пользуется телефоном", "пользуется смартфоном", "набирает текст"]
-                    has_phone = any(p in ans_lower for p in pos_phone) and not any(n in ans_lower for n in neg_phone)
-
-                    if has_phone and not is_duplicate("CASHIER_DISTRACTED", t_ev):
-                        ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                        detected_violations.append({
-                            "type": "CASHIER_DISTRACTED",
-                            "timecode_sec": round(float(t_ev), 1),
-                            "description": f"Использование смартфона кассиром на рабочем месте: {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12",
-                            "evidence_frames": ev_frames
-                        })
+                    found, raw_ans = self.ask_vlm_for_violations(
+                        Image.fromarray(rgb),
+                        context_hint="Кассир подносит руку к лицу или голове.",
+                        candidate_types=["FOOD_DRINK_AT_DESK", "CASHIER_DISTRACTED"]
+                    )
+                    for v_code, title, law, ans in found:
+                        register_violation(v_code, t_ev, f"{title} ({ans})", law)
 
             # =========================================================================
-            # Кейс 2: Начало смены / Чистота стола (ПП НБРК № 231, п. 15)
+            # Событие 2: Начало смены / Чистота стола (ПП НБРК № 231, п. 15)
             # =========================================================================
             if trig == "INITIAL_DESK_CHECK":
-                # Проверка личных вещей на столе в начале смены (Х-40)
                 t_desk = min(duration - 1.0, 17.0) if duration > 15.0 else 0.5
                 rgb = self.get_rgb_frame(cap, t_desk, duration)
                 if rgb is not None:
-                    p = "Посмотри на рабочий стол кассира: лежат ли на столе куртка или личные вещи (одежда, сумка) кассира? Опиши подробно, что на столе."
-                    ans = self.ask_vlm(Image.fromarray(rgb), p)
-                    ans_lower = ans.lower()
-                    neg_items = ["нет куртки", "нет сумки", "без куртки", "чист", "ничего нет", "не лежит", "не обнаружено", "отсутствует", "пустой"]
-                    pos_items = ["лежит куртка", "на столе куртка", "куртка на столе", "снятая куртка", "одежда на столе", "лежит рюкзак", "большая сумка на столе"]
-                    has_neg = any(n in ans_lower for n in neg_items)
-                    has_pos = any(p in ans_lower for p in pos_items)
-                    if has_pos and not has_neg:
-                        if not is_duplicate("UNAUTHORIZED_ITEMS", t_desk):
-                            ev_frames = self.get_evidence_frames(cap, t_desk, duration)
-                            detected_violations.append({
-                                "type": "UNAUTHORIZED_ITEMS",
-                                "timecode_sec": round(float(t_desk), 1),
-                                "description": f"Нарушение чистоты рабочей зоны: кассир начинает работу с личными вещами на рабочем столе кассы ({ans}). Статья: Постановление Правления НБРК № 231, п. 15",
-                                "evidence_frames": ev_frames
-                            })
+                    found, raw_ans = self.ask_vlm_for_violations(
+                        Image.fromarray(rgb),
+                        context_hint="Рабочий стол кассы в начале работы кассира.",
+                        candidate_types=["UNAUTHORIZED_ITEMS"]
+                    )
+                    for v_code, title, law, ans in found:
+                        register_violation(v_code, t_desk, f"Нарушение чистоты рабочей зоны: {ans}", law)
 
             # =========================================================================
-            # Кейс 3: Третий человек / Посторонний в кассе / Подглядывание (ПП НБРК № 231, п. 12, 14, 20)
+            # Событие 3: Третий человек / Посторонний в кассе / Подглядывание (ПП НБРК № 231)
             # =========================================================================
             if trig == "THIRD_PERSON" or "THIRD_PERSON" in merged:
                 rgb = self.get_rgb_frame(cap, t_ev, duration)
                 if rgb is not None:
-                    p = "Сколько клиентов находится у кассы или заглядывает ли посторонний человек в кассовую кабину? Ответь кратко."
-                    ans = self.ask_vlm(Image.fromarray(rgb), p).lower()
-                    has_intrusion = any(w in ans for w in ["два клиента", "двое клиентов", "три человека", "трое человек", "подсматривает", "заглядывает", "посторонний", "третий человек", "второй клиент"])
-                    if has_intrusion and not any(n in ans for n in ["нет посторонних", "один клиент", "один человек"]):
-                        if not is_duplicate("THIRD_PERSON_INTRUSION", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "THIRD_PERSON_INTRUSION",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Нарушение пропускного режима и тайны операций (одновременный доступ нескольких лиц или подглядывание): {ans}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 12, 14",
-                                "evidence_frames": ev_frames
-                            })
+                    found, raw_ans = self.ask_vlm_for_violations(
+                        Image.fromarray(rgb),
+                        context_hint="Зона обслуживания кассы и входная дверь кассовой кабины.",
+                        candidate_types=["THIRD_PERSON_INTRUSION", "MULTIPLE_CLIENTS", "UNLOCKED_DOOR"]
+                    )
+                    for v_code, title, law, ans in found:
+                        register_violation(v_code, t_ev, f"{title}: {ans}", law)
 
             # =========================================================================
-            # Кейс 4: Оставление рабочего места (Комплексный аудит безопасности)
+            # Событие 4: Оставление рабочего места / Сейф / Экран (ПП НБРК № 231, 224)
             # =========================================================================
             if trig == "CASHIER_STANDUP" or "CASHIER_STANDUP" in merged:
-                # Оцениваем состояние зоны через 1 секунду после вставания кассира
                 t_check = min(duration - 0.1, t_ev + 1.0)
                 rgb = self.get_rgb_frame(cap, t_check, duration)
                 if rgb is not None:
-                    # Проверяем, действительно ли кассир встала/покинула рабочее место, а не просто сидит за столом
                     p_sit = "Сидит ли кассир за рабочим столом или кассир покинула рабочее место/встала и отошла?"
                     ans_sit = self.ask_vlm(Image.fromarray(rgb), p_sit).lower()
                     is_sitting = any(w in ans_sit for w in ["сидит за столом", "сидит на стуле", "кассир сидит"]) and not any(neg in ans_sit for neg in ["не сидит", "но не сидит", "не за столом"])
@@ -211,245 +314,55 @@ class BankViolationDetector:
                                 cashier_is_away = False
 
                     if cashier_is_away:
-                        # 4.1. Проверка блокировки экрана ноутбука (Х-11, Х-28)
-                        p_screen = "Посмотри на экран ноутбука кассира: экран светится (включен) или темная поверхность/выключен?"
-                        ans_screen = self.ask_vlm(Image.fromarray(rgb), p_screen)
-                        ans_sc_lower = ans_screen.lower()
-                        is_screen_on = any(w in ans_sc_lower for w in ["светящийся", "светится", "включен"]) and not any(n in ans_sc_lower for n in ["темную", "темная", "предмет", "выключен", "не светится", "закрыт"])
-                        if is_screen_on:
-                            if not is_duplicate("LEAVE_WORKPLACE", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "LEAVE_WORKPLACE",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Оставление рабочего места без блокировки: экран ноутбука остался включенным/незаблокированным ({ans_screen}). Статья: Постановление Правления НБРК № 231, Глава 2, п. 38",
-                                    "evidence_frames": ev_frames
-                                })
-
-                        # 4.2. Проверка металлического сейфа за столом (Х-20, Х-22)
-                        p_safe = "Посмотри на серый металлический шкаф-сейф позади кассира: дверца сейфа закрыта плотно или распахнута? Торчит ли ключ в замке?"
-                        ans_safe = self.ask_vlm(Image.fromarray(rgb), p_safe)
-                        ans_safe_lower = ans_safe.lower()
-                        pos_safe = ["распахнута", "дверца открыта настежь", "ключ торчит в замке", "ключ оставлен в замке"]
-                        neg_safe = ["дверца закрыта", "сейф закрыт", "заперт", "закрыта", "не открыта", "нет ключа", "без ключа", "ключ не торчит", "ключа нет", "закрыт"]
-                        if any(p in ans_safe_lower for p in pos_safe) and not any(n in ans_safe_lower for n in neg_safe):
-                            if not is_duplicate("UNLOCKED_SAFE", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "UNLOCKED_SAFE",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Нарушение режима хранения ценностей: сейф оставлен открытым или с ключом в замке без присмотра кассира ({ans_safe}). Статья: Постановление Правления НБРК № 224, п. 31",
-                                    "evidence_frames": ev_frames
-                                })
-
-                        # 4.3. Проверка оставленных ценностей/мешка/документов на столе (Х-15, Х-24, Х-26)
-                        p_desk = "Посмотри на поверхность стола кассира в отсутствие кассира: лежит ли на столе инкассаторский мешок с деньгами, пачка наличных денег или служебные документы с печатью? Опиши подробно."
-                        ans_desk = self.ask_vlm(Image.fromarray(rgb), p_desk)
-                        ans_desk_lower = ans_desk.lower()
-                        neg_desk = ["стол чист", "стол пустой", "ничего нет", "нет мешка", "нет денег", "нет документов", "не оставлено", "пусто", "чистый", "в порядке"]
-
-                        if any(w in ans_desk_lower for w in ["инкассаторский мешок", "сумка с деньгами", "большой мешок"]) and not any(n in ans_desk_lower for n in neg_desk):
-                            if not is_duplicate("UNAUTHORIZED_ITEMS", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "UNAUTHORIZED_ITEMS",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Оставление ценностей без присмотра: на столе оставлен инкассаторский мешок/сумка ({ans_desk}). Статья: Постановление Правления НБРК № 231, Глава 5, п. 56",
-                                    "evidence_frames": ev_frames
-                                })
-                        elif any(w in ans_desk_lower for w in ["пачка денег на столе", "наличные на столе", "купюры на столе", "пакет с деньгами"]) and not any(n in ans_desk_lower for n in neg_desk):
-                            if not is_duplicate("MONEY_LEFT_BETWEEN_CLIENTS", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "MONEY_LEFT_BETWEEN_CLIENTS",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Оставление денежной наличности без присмотра на рабочем столе: {ans_desk}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 38",
-                                    "evidence_frames": ev_frames
-                                })
-                        elif any(w in ans_desk_lower for w in ["печать на столе", "документы и печать", "штамп на столе"]) and not any(n in ans_desk_lower for n in neg_desk):
-                            if not is_duplicate("LEAVE_WORKPLACE", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "LEAVE_WORKPLACE",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Оставление служебных документов и печати на столе без уборки в сейф: {ans_desk}. Статья: Постановление Правления НБРК № 231, Глава 2, п. 38",
-                                    "evidence_frames": ev_frames
-                                })
-
-
-                        # 4.4. Проверка незапертой стеклянной входной двери (Х-30, Х-32)
-                        p_door = "Посмотри на входную дверь кассовой кабины: закрыта ли дверь или оставлена открытой/распахнутой? Опиши подробно."
-                        ans_door = self.ask_vlm(Image.fromarray(rgb), p_door)
-                        ans_door_lower = ans_door.lower()
-                        pos_door = ["дверь открыта", "дверь распахнута", "оставлена открытой", "настежь", "распахнута"]
-                        neg_door = ["дверь закрыта", "закрыта", "заперта", "прикрыта", "не открыта"]
-                        if any(p in ans_door_lower for p in pos_door) and not any(n in ans_door_lower for n in neg_door):
-                            if not is_duplicate("UNLOCKED_DOOR", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "UNLOCKED_DOOR",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Нарушение безопасности кассовой кабины: входная дверь оставлена открытой при выходе кассира ({ans_door}). Статья: Постановление Правления НБРК № 224, п. 12",
-                                    "evidence_frames": ev_frames
-                                })
-
+                        found, raw_ans = self.ask_vlm_for_violations(
+                            Image.fromarray(rgb),
+                            context_hint="Кассир встала и отошла от рабочего стола. Проверь дверцу сейфа позади стола, экран ноутбука, оставленные деньги/документы на столе и входную дверь кабины.",
+                            candidate_types=["UNLOCKED_SAFE", "LEAVE_WORKPLACE", "MONEY_LEFT_BETWEEN_CLIENTS", "UNLOCKED_DOOR", "UNAUTHORIZED_ITEMS"]
+                        )
+                        for v_code, title, law, ans in found:
+                            register_violation(v_code, t_ev, f"{title}: {ans}", law)
 
             # =========================================================================
-            # Кейс 5: Завершение обслуживания клиента / Уборка денег в сейф (Х-4, Х-34)
+            # Событие 5: Завершение обслуживания клиента / Уход (ПП НБРК № 231)
             # =========================================================================
             if trig == "CLIENT_DEPARTURE" or "CLIENT_DEPARTURE" in merged:
                 rgb = self.get_rgb_frame(cap, min(duration - 0.2, t_ev + 1.0), duration)
                 if rgb is not None:
-                    # 5.1. Деньги оставлены на столе после ухода клиента (Х-4)
-                    p_cash = "Клиент ушел от кассы. Посмотри на рабочий стол кассира: лежат ли на столе наличные деньги, купюры или пачка денег? Опиши подробно."
-                    ans_cash = self.ask_vlm(Image.fromarray(rgb), p_cash)
-                    ans_c_lower = ans_cash.lower()
-                    pos_cash = ["лежат деньги", "пачка денег", "купюры", "наличные на столе", "на столе лежат", "видны деньги", "деньги на столе", "остались деньги"]
-                    neg_cash = ["нет денег", "стол чист", "стол пустой", "убрала деньги в сейф", "убрала в сейф", "убрала деньги", "положила в сейф", "убраны в сейф", "денег нет", "чистый", "деньги убраны", "не лежат"]
-                    if any(w in ans_c_lower for w in pos_cash) and not any(n in ans_c_lower for n in neg_cash):
-                        if not is_duplicate("UNLOCKED_SAFE", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "UNLOCKED_SAFE",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Нарушение режима хранения ценностей: после ухода клиента кассир не убрала деньги в индивидуальный сейф ({ans_cash}). Статья: Постановление Правления НБРК № 231, Глава 2, п. 38",
-                                "evidence_frames": ev_frames
-                            })
-
-                    # 5.2. Пересчет денег на машинке после ухода клиента (Х-34)
-                    p_away = "Посмотри на кассира и машинку: клиент уходит или уже вышел, а кассир производит пересчет денег на машинке вне поля зрения клиента?"
-                    ans_away = self.ask_vlm(Image.fromarray(rgb), p_away).lower()
-                    pos_count = ["кассир производит пересчет", "пересчитывает на машинке", "загружает купюры в машинку", "считает на счетной машинке"]
-                    neg_count = ["не производит", "не считает", "в присутствии клиента", "не определено", "выключена", "не работает", "нет пересчета"]
-                    if any(w in ans_away for w in pos_count) and not any(n in ans_away for n in neg_count):
-                        if not is_duplicate("NO_ID_VERIFICATION", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "NO_ID_VERIFICATION",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Нарушение регламента пересчета наличности: кассир приняла деньги без проверки документов и осуществляет пересчет вне поля зрения клиента при его уходе. Статья: Постановление Правления НБРК № 231, п. 19, 23",
-                                "evidence_frames": ev_frames
-                            })
+                    found, raw_ans = self.ask_vlm_for_violations(
+                        Image.fromarray(rgb),
+                        context_hint="Клиент отошел от кассы. Проверь, убраны ли деньги в сейф, не оставлена ли наличность на столе, и не производит ли кассир пересчет денег вне поля зрения клиента.",
+                        candidate_types=["UNLOCKED_SAFE", "MONEY_LEFT_BETWEEN_CLIENTS", "NO_ID_VERIFICATION"]
+                    )
+                    for v_code, title, law, ans in found:
+                        register_violation(v_code, t_ev, f"{title}: {ans}", law)
 
             # =========================================================================
-            # Кейс 6: Передача ценностей, машинный пересчет, невозврат сдачи (Х-1, Х-44, Х-47)
+            # Событие 6: Передача ценностей, машинный пересчет, сдача (ПП НБРК № 231)
             # =========================================================================
             if trig == "HANDOVER" or "HANDOVER" in merged:
                 rgb = self.get_rgb_frame(cap, min(duration - 0.2, t_ev + 2.0), duration)
                 if rgb is not None:
-                    # 6.1. Невозврат части денег / присвоение сдачи (Х-1)
-                    if t_ev >= duration * 0.4:
-                        p_ret = "Посмотри на руки кассира: держит ли кассир купюры в руке при выдаче клиенту или передала все купюры через лоток? Опиши подробно."
-                        ans_ret = self.ask_vlm(Image.fromarray(rgb), p_ret)
-                        ans_ret_lower = ans_ret.lower()
-                        pos_ret_match = any(w in ans_ret_lower for w in ["оставила себе часть", "спрятала часть денег", "убрала себе часть", "не отдала клиенту", "не вернула сдачу", "присвоила"])
-                        neg_ret = ["вернула полностью", "отдала клиенту", "передала клиенту", "не присвоила", "сдала сдачу", "все отдала", "без нарушений", "нет нарушений", "передает в лоток", "передает через лоток", "передает их через лоток", "передает их клиенту", "выдает клиенту", "берет из лотка"]
-                        if pos_ret_match and not any(n in ans_ret_lower for n in neg_ret):
-                            if not is_duplicate("CLIENT_DESK_ACCESS", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "CLIENT_DESK_ACCESS",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Нарушение регламента возврата наличности клиенту: кассир не вернула клиенту положенную сдачу/часть денег ({ans_ret}). Статья: Постановление Правления НБРК № 231, п. 25, 27",
-                                    "evidence_frames": ev_frames
-                                })
-
-                    # 6.2. Отбракованные купюры объединены с нормальными (Х-44)
-                    p_rej = "Посмотри на пересчет на счетной машинке: соединила ли кассир отбракованные машинкой купюры с нормальной пачкой? Опиши кратко."
-                    ans_rej = self.ask_vlm(Image.fromarray(rgb), p_rej)
-                    ans_rej_lower = ans_rej.lower()
-                    if any(w in ans_rej_lower for w in ["соединила", "смешала", "объединила отбракованные"]) and not any(n in ans_rej_lower for n in ["не соединила", "не смешивала"]):
-                        if not is_duplicate("NO_COUNTING_MACHINE", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "NO_COUNTING_MACHINE",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Грубое нарушение кассовой дисциплины: банкноты, отбракованные счетной машинкой, объединены с нормальной пачкой ({ans_rej}). Статья: Постановление Правления НБРК № 231, Глава 3, п. 24",
-                                "evidence_frames": ev_frames
-                            })
-
-                    # 6.3. Смешивание денег предыдущего и текущего клиента (Х-47)
-                    p_mix = "Посмотри на деньги на столе: объединила ли кассир деньги предыдущего клиента с деньгами текущего клиента в общую пачку? Опиши кратко."
-                    ans_mix = self.ask_vlm(Image.fromarray(rgb), p_mix)
-                    ans_mix_lower = ans_mix.lower()
-                    if any(w in ans_mix_lower for w in ["объединила", "соединила деньги", "смешала купюры"]) and not any(n in ans_mix_lower for n in ["не объединяла", "не смешивала"]):
-                        if not is_duplicate("MONEY_LEFT_BETWEEN_CLIENTS", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "MONEY_LEFT_BETWEEN_CLIENTS",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Смешивание денежной наличности: кассир объединила деньги предыдущего клиента с наличностью текущего клиента ({ans_mix}). Статья: Постановление Правления НБРК № 231, п. 27",
-                                "evidence_frames": ev_frames
-                            })
+                    found, raw_ans = self.ask_vlm_for_violations(
+                        Image.fromarray(rgb),
+                        context_hint="Передача денег между клиентом и кассиром, работа со счетной машинкой на столе.",
+                        candidate_types=["CLIENT_DESK_ACCESS", "NO_COUNTING_MACHINE", "MONEY_LEFT_BETWEEN_CLIENTS"]
+                    )
+                    for v_code, title, law, ans in found:
+                        register_violation(v_code, t_ev, f"{title}: {ans}", law)
 
             # =========================================================================
-            # Кейс 7: Идентификация клиента и остаток денег на столе (Х-2, Х-17, Х-18, Х-38)
+            # Событие 7: Приход клиента / Инкассация (ПП НБРК № 231, 224)
             # =========================================================================
             if trig == "CLIENT_ARRIVAL" or "CLIENT_ARRIVAL" in merged:
                 rgb = self.get_rgb_frame(cap, t_ev + 1.0, duration)
                 if rgb is not None:
-                    # 7.1. Деньги от прошлого клиента на столе при приеме следующего (Х-38)
-                    p_leftover = "К столу подошел клиент. Лежат ли уже на столе неубранные деньги от предыдущей операции? Опиши кратко."
-                    ans_leftover = self.ask_vlm(Image.fromarray(rgb), p_leftover)
-                    ans_lo_lower = ans_leftover.lower()
-                    neg_money = ["не лежат", "не остались", "нет денег", "стол чист", "денег нет", "без денег", "не обнаружено", "отсутствуют", "чистый стол"]
-                    pos_money = ["остались неубранные деньги", "остались деньги от предыдущего", "лежат неубранные купюры", "осталась пачка денег от прошлого", "лежат забытые деньги", "на столе уже лежат деньги"]
-                    has_neg = any(n in ans_lo_lower for n in neg_money)
-                    has_pos = any(p in ans_lo_lower for p in pos_money)
-                    if has_pos and not has_neg:
-                        if not is_duplicate("MONEY_LEFT_BETWEEN_CLIENTS", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "MONEY_LEFT_BETWEEN_CLIENTS",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Нарушение пооперационного разделения наличности: на столе остались деньги от предыдущего клиента при приеме следующего ({ans_leftover}). Статья: Постановление Правления НБРК № 231, п. 27",
-                                "evidence_frames": ev_frames
-                            })
-
-                    # 7.2. Инкассаторский мешок без проверки документов (Х-17)
-                    p_ink = "Посмотри на человека и стол: принес ли посетитель зеленый инкассаторский мешок или сумку с ценностями?"
-                    ans_ink = self.ask_vlm(Image.fromarray(rgb), p_ink).lower()
-                    if any(w in ans_ink for w in ["инкассаторский", "зеленый мешок", "сумку с ценностями", "мешок на столе"]) and not any(n in ans_ink for n in ["нет мешка", "обычный клиент"]):
-                        if not is_duplicate("NO_ID_VERIFICATION", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "NO_ID_VERIFICATION",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Нарушение регламента приема инкассаторских сумок: кассир приняла инкассаторский мешок без предварительной проверки служебного удостоверения и доверенности инкассатора. Статья: Постановление Правления НБРК № 231, п. 53-55",
-                                "evidence_frames": ev_frames
-                            })
-
-                    # 7.3. Немедленная выкладка пачки денег без проверки удостоверения (X-2)
-                    if duration < 30.0:
-                        p_tbl = "Опиши, что находится на столе: пачка денег или стол пустой?"
-                        ans_tbl = self.ask_vlm(Image.fromarray(rgb), p_tbl).lower()
-                        pos_tbl = ["находится пачка денег", "лежит пачка денег", "пачка наличных", "пачка денег на столе", "выложена пачка денег"]
-                        neg_tbl = ["нет пачки денег", "стол пустой", "пуст", "ничего нет", "не лежит", "нет денег", "чист"]
-                        if any(p in ans_tbl for p in pos_tbl) and not any(n in ans_tbl for n in neg_tbl):
-                            if not is_duplicate("NO_ID_VERIFICATION", t_ev):
-                                ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                                detected_violations.append({
-                                    "type": "NO_ID_VERIFICATION",
-                                    "timecode_sec": round(float(t_ev), 1),
-                                    "description": f"Нарушение регламента идентификации клиента: на стол сразу выложена пачка денег ({ans_tbl}) без предварительного предъявления документа, удостоверяющего личность клиента. Статья: Постановление Правления НБРК № 231, п. 19 пп. 1), п. 31 пп. 1)",
-                                    "evidence_frames": ev_frames
-                                })
-
-                    # 7.4. Проникновение постороннего лица внутрь рабочей зоны / открытая дверь (Х-30)
-                    p_intr = "Посмотри на людей: зашел ли мужчина внутрь кассовой кабины за спину кассира или находится у стола?"
-                    ans_intr = self.ask_vlm(Image.fromarray(rgb), p_intr).lower()
-                    neg_intr = ["нет посторонних", "один кассир", "не видно", "нельзя определить", "не позволяет определить", "женщина заходит", "кассир заходит", "входит кассир"]
-                    pos_intr = ["мужчина зашел", "посторонний зашел", "посторонний внутри", "зашел внутрь кассовой кабины", "за спиной кассира стоит мужчина"]
-                    if any(w in ans_intr for w in pos_intr) and not any(n in ans_intr for n in neg_intr):
-                        if not is_duplicate("THIRD_PERSON_INTRUSION", t_ev) and not is_duplicate("UNLOCKED_DOOR", t_ev):
-                            ev_frames = self.get_evidence_frames(cap, t_ev, duration)
-                            detected_violations.append({
-                                "type": "UNLOCKED_DOOR",
-                                "timecode_sec": round(float(t_ev), 1),
-                                "description": f"Нарушение режима безопасности кассового узла: не закрыта входная дверь кабины / проникновение постороннего лица внутрь рабочей зоны ({ans_intr}). Статья: Постановление Правления НБРК № 224, п. 12",
-                                "evidence_frames": ev_frames
-                            })
-
+                    found, raw_ans = self.ask_vlm_for_violations(
+                        Image.fromarray(rgb),
+                        context_hint="К кассе подошел посетитель или инкассатор. Проверь наличие денег от прошлого клиента, инкассаторского мешка, выкладку купюр без проверки документов или проникновение в кабину.",
+                        candidate_types=["MONEY_LEFT_BETWEEN_CLIENTS", "NO_ID_VERIFICATION", "UNLOCKED_DOOR", "THIRD_PERSON_INTRUSION"]
+                    )
+                    for v_code, title, law, ans in found:
+                        register_violation(v_code, t_ev, f"{title}: {ans}", law)
 
         cap.release()
 
