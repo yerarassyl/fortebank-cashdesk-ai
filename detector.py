@@ -18,10 +18,10 @@ def frame_to_base64(cv2_frame, max_size=720, quality=85):
     return base64.b64encode(buffer).decode('utf-8')
 
 # =============================================================================
-# ЭТАЛОННЫЙ КАТАЛОГ ВСЕХ ВОЗМОЖНЫХ НАРУШЕНИЙ КАССОВОЙ ДИСЦИПЛИНЫ FORTEBANK
+# ЗАКРЫТЫЙ ЭТАЛОННЫЙ КАТАЛОГ НАРУШЕНИЙ КАССОВОЙ ДИСЦИПЛИНЫ FORTEBANK
 # =============================================================================
 ALL_VIOLATIONS_CATALOG_TEXT = """
-СПИСОК ВСЕХ ВОЗМОЖНЫХ НАРУШЕНИЙ КАССОВОЙ ДИСЦИПЛИНЫ:
+ЗАКРЫТЫЙ СПИСОК ВСЕХ ВОЗМОЖНЫХ НАРУШЕНИЙ КАССОВОЙ ДИСЦИПЛИНЫ:
 1. [FOOD_DRINK_AT_DESK] — Прием пищи или напитков: кассир держит чашку, кружку, стаканчик, бутылку или еду и пьет/ест на рабочем месте в кассе. (ПП НБРК № 231, п. 15)
 2. [CASHIER_DISTRACTED] — Использование смартфона: кассир держит телефон, смотрит в экран или пользуется телефоном за кассой. (ПП НБРК № 231, п. 12)
 3. [UNLOCKED_SAFE] — Нарушение режима сейфа: сейф позади кассира оставлен открытым / распахнутым, ключ оставлен в замке, либо кассир не убрала деньги в сейф. (ПП НБРК № 224, п. 31 / ПП № 231, п. 38)
@@ -32,7 +32,7 @@ ALL_VIOLATIONS_CATALOG_TEXT = """
 8. [MONEY_LEFT_BETWEEN_CLIENTS] — Оставление денежной наличности: на столе оставлена пачка денег без присмотра / деньги прошлого клиента при приеме следующего. (ПП НБРК № 231, п. 27, 38)
 9. [NO_ID_VERIFICATION] — Нарушение порядка приема/выдачи наличности: прием/выдача денег или инкассаторской сумки без проверки документов, либо пересчет вне видимости клиента после его ухода. (ПП НБРК № 231, п. 19, 23, 53)
 10. [NO_COUNTING_MACHINE] — Нарушение кассовой дисциплины: банкноты, отбракованные счетной машинкой, соединены с нормальной пачкой. (ПП НБРК № 231, п. 24)
-11. [CLIENT_DESK_ACCESS] — Нарушение возврата наличности клиенту: кассир не вернула сдачу клиенту или присвоила часть денег себе. (ПП НБРК № 231, п. 25, 27)
+11. [CLIENT_DESK_ACCESS] — Нарушение регламента возврата наличности клиенту: кассир не вернула сдачу клиенту или присвоила часть денег себе. (ПП НБРК № 231, п. 25, 27)
 12. [UNAUTHORIZED_ITEMS] — Нарушение чистоты рабочей зоны: на столе кассира лежит личный рюкзак, сумка, куртка или посторонние вещи. (ПП НБРК № 231, п. 15)
 """
 
@@ -111,6 +111,9 @@ VIOLATIONS_META = {
     }
 }
 
+# Множество строго разрешенных кодов нарушений (любые другие отсекаются)
+ALLOWED_VIOLATION_CODES = set(VIOLATIONS_META.keys())
+
 class BankViolationDetector:
     def __init__(self, model_name="Qwen/Qwen2-VL-2B-Instruct"):
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -142,21 +145,28 @@ class BankViolationDetector:
 
     def ask_vlm_for_violations(self, image, context_hint="", candidate_types=None):
         """
-        УНИВЕРСАЛЬНЫЙ ПРОМПТ ВЫБОРА НАРУШЕНИЙ ИЗ ВСЕГО СПИСКА
-        Дает VLM выбрать одно или несколько нарушений из каталога всех возможных нарушений.
+        УНИВЕРСАЛЬНЫЙ ПРОМПТ ВЫБОРА НАРУШЕНИЙ ИЗ ЗАКРЫТОГО КАТАЛОГА.
+        VLM строго обязана выбирать ТОЛЬКО из закрытого списка и не выдумывать новые виды нарушений.
         """
+        allowed_subset = [c for c in candidate_types if c in ALLOWED_VIOLATION_CODES] if candidate_types else list(ALLOWED_VIOLATION_CODES)
+        allowed_bullet_list = "\n".join([f"- [{k}]" for k in allowed_subset])
+
         prompt = f"""Ты — объективный ИИ-ревизор службы безопасности и комплаенс-контроля ForteBank.
 Оцени обстановку и действия кассира и клиентов на этом кадре видеонаблюдения рабочего места кассы банка.
 {context_hint}
 
 {ALL_VIOLATIONS_CATALOG_TEXT}
 
-ИНСТРУКЦИЯ:
-- Если действия полностью штатные (кассир работает, руки свободны, считает деньги, сейф закрыт, стол чист) — ответь строго:
+СТРОГИЕ ПРАВИЛА И ЗАПРЕТ ГАЛЛЮЦИНАЦИЙ:
+1. КАТЕГОРИЧЕСКИ ЗАПРЕЩАЕТСЯ придумывать новые названия, статьи или виды нарушений, которых нет в списке.
+2. Разрешено выбирать ТОЛЬКО коды из закрытого перечня:
+{allowed_bullet_list}
+
+3. Если действие не попадает явно под один из этих пунктов или обстановка полностью штатная (кассир работает, руки свободны, считает деньги, сейф закрыт, стол чист) — ответь строго одним словом:
 ШТАТНО
 
-- Если на кадре зафиксировано нарушение(я) — выбери ОДНО ИЛИ НЕСКОЛЬКО нарушений ИСКЛЮЧИТЕЛЬНО ИЗ СПИСКА ВЫШЕ и укажи их в формате:
-НАРУШЕНИЕ: [КОД_НАРУШЕНИЯ] — <что именно видно на кадре>
+4. Если на кадре зафиксировано нарушение — укажи ТОЛЬКО код(ы) из закрытого списка выше:
+НАРУШЕНИЕ: [КОД_ИЗ_СПИСКА] — <краткое описание факта>
 """
         ans = self.ask_vlm(image, prompt, max_new_tokens=120)
         ans_lower = ans.lower()
@@ -165,7 +175,7 @@ class BankViolationDetector:
         is_clean = "штатно" in ans_lower and "нарушение" not in ans_lower
 
         if not is_clean:
-            check_keys = candidate_types if candidate_types else VIOLATIONS_META.keys()
+            check_keys = allowed_subset
             for v_code in check_keys:
                 meta = VIOLATIONS_META.get(v_code)
                 if not meta:
@@ -174,7 +184,9 @@ class BankViolationDetector:
                 has_pos = any(w in ans_lower for w in meta["pos"])
                 has_neg = any(w in ans_lower for w in meta["neg"])
                 if (has_code or has_pos) and not has_neg:
-                    detected.append((v_code, meta["title"], meta["law"], ans))
+                    # Строгая верификация: код обязан быть в закрытом каталоге
+                    if v_code in ALLOWED_VIOLATION_CODES:
+                        detected.append((v_code, meta["title"], meta["law"], ans))
 
         return detected, ans
 
@@ -214,9 +226,9 @@ class BankViolationDetector:
 
     def analyze_file(self, video_path, filename=None):
         """
-        АЛГОРИТМИЧЕСКИЙ ИИ-АНАЛИЗ НА БАЗЕ ВЫБОРА НАРУШЕНИЙ ИЗ ПОЛНОГО КАТАЛОГА VLM.
+        АЛГОРИТМИЧЕСКИЙ ИИ-АНАЛИЗ НА БАЗЕ ВЫБОРА НАРУШЕНИЙ ИЗ ЗАКРЫТОГО КАТАЛОГА VLM.
         1. YOLO Pose сканирует биомеханику, перемещения и жесты кассира и клиентов.
-        2. Qwen2-VL выбирает одно или несколько нарушений из полного списка регламента РК.
+        2. Qwen2-VL выбирает нарушение СТРОГО из закрытого перечня НПА РК (запрет выдумывания).
         """
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -236,6 +248,9 @@ class BankViolationDetector:
             return False
 
         def register_violation(v_code, t_time, desc, law_article):
+            # Жесткий фильтр: запрещены любые выдуманные типы нарушений не из нашего каталога!
+            if v_code not in ALLOWED_VIOLATION_CODES:
+                return
             if not is_duplicate(v_code, t_time):
                 ev_frames = self.get_evidence_frames(cap, t_time, duration)
                 detected_violations.append({
@@ -366,9 +381,14 @@ class BankViolationDetector:
 
         cap.release()
 
+        # Финальная санитария: 100% гарантия отсутствия любых выдуманных нарушений
+        sanitized_violations = [
+            v for v in detected_violations if v.get("type") in ALLOWED_VIOLATION_CODES
+        ]
+
         return {
-            "verdict": "violation" if len(detected_violations) > 0 else "no_violation",
-            "violations": detected_violations
+            "verdict": "violation" if len(sanitized_violations) > 0 else "no_violation",
+            "violations": sanitized_violations
         }
 
 if __name__ == "__main__":
