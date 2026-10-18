@@ -1088,7 +1088,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         quote: "Сначала выдаются деньги, клиент забирает их, а документы подписываются позже или вовсе не подписываются.",
         group: "Группа II. Нарушения при приеме, пересчете и выдаче наличных денег",
         criticality: "HIGH",
-        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
       },
       "Customer Identification Failure": {
         title: "ПП НБРК № 231, Глава 2, п. 31",
@@ -1096,7 +1096,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         quote: "Сначала выдаются деньги, клиент забирает их, а документы подписываются позже или вовсе не подписываются.",
         group: "Группа II. Нарушения при приеме, пересчете и выдаче наличных денег",
         criticality: "HIGH",
-        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
       },
       "Unauthorized Person in Cash Cabin": {
         title: "ПП НБРК № 231, п. 14, 75",
@@ -1104,7 +1104,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         quote: "Вход посторонних лиц в кассовое помещение категорически запрещен. Доступ имеют только кассиры данной смены.",
         group: "Группа III. Нарушения режима безопасности и доступа",
         criticality: "CRITICAL",
-        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
       },
       "Open Safe or Storage Cabinet": {
         title: "ПП НБРК № 231, Глава 2, п. 20, 80",
@@ -1112,7 +1112,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         quote: "Дверцы сейфов, металлических шкафов и тележек во время работы должны быть закрыты на ключ, если в данный момент не производится закладка или изъятие ценностей.",
         group: "Группа III. Нарушения режима безопасности и доступа",
         criticality: "CRITICAL",
-        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
       },
       "Leaving Cash Desk Unattended": {
         title: "ПП НБРК № 231, Глава 2, п. 22",
@@ -1120,7 +1120,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         quote: "Кассовому работнику запрещается покидать рабочее место до завершения кассовой операции и уборки ценностей в сейф.",
         group: "Группа I. Нарушения порядка на рабочем месте и поведения кассира",
         criticality: "CRITICAL",
-        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
       },
       "Bypassing Security Pass Tray": {
         title: "ПП НБРК № 14, Глава 3, п. 16 пп. 4",
@@ -1136,7 +1136,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         quote: "Кассир обязан пересчитать полистно или на счетно-сортировальной машине каждую принятую банкноту с обязательной проверкой признаков подлинности.",
         group: "Группа II. Нарушения при приеме, пересчете и выдаче наличных денег",
         criticality: "HIGH",
-        url: "https://adilet.zan.kz/rus/docs/P1900000231"
+        url: "https://adilet.zan.kz/rus/docs/V1900019680"
       }
     };
 
@@ -1146,7 +1146,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
       quote: "Кассовый работник обязан строго соблюдать правила кассовой дисциплины и регламент обслуживания.",
       group: "Нарушения кассовой дисциплины",
       criticality: "HIGH",
-      url: "https://adilet.zan.kz/rus/docs/P1900000231"
+      url: "https://adilet.zan.kz/rus/docs/V1900019680"
     };
 
     if (!jobData.incidents) jobData.incidents = [];
@@ -1626,7 +1626,7 @@ body { background: #F9FAFB; font-family: Inter, system-ui, -apple-system, "Segoe
         csvContent += row.join(";") + "\n";
       });
     } else {
-      csvContent += `1;"00:00 - ${jobData.durationStr || ''}";"Штатная работа кассира";"COMPLIANT";"NORMAL";"Соответствие требованиям НБ РК";"Все регламенты соблюдены";"Постановление Правления НБРК № 231";"Кассир соблюдает правила кассовых операций";"https://adilet.zan.kz/rus/docs/P1900000231"\n`;
+      csvContent += `1;"00:00 - ${jobData.durationStr || ''}";"Штатная работа кассира";"COMPLIANT";"NORMAL";"Соответствие требованиям НБ РК";"Все регламенты соблюдены";"Постановление Правления НБРК № 231";"Кассир соблюдает правила кассовых операций";"https://adilet.zan.kz/rus/docs/V1900019680"\n`;
     }
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

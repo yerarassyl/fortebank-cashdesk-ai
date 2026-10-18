@@ -220,7 +220,7 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
             law_visual = law_entry.get("visual_sign", "")
             law_group = law_entry.get("group") or "Нарушения кассовой дисциплины"
             criticality = law_entry.get("criticality") or "HIGH"
-            law_url = law_entry.get("url") or "https://adilet.zan.kz/rus/docs/P1900000231"
+            law_url = law_entry.get("url") or "https://adilet.zan.kz/rus/docs/V1900019680"
             law_note = legal_entry.get("note", "")
 
             full_quote = law_quote
@@ -332,7 +332,7 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
             "name_ru": "Кассовый регламент и порядок ведения кассовых операций соблюдены в полном объеме",
             "quote": "Кассир осуществляет прием и выдачу наличных денег и ценностей клиентам исключительно через передаточный кассовый лоток в пределах защищенной кассовой кабины, обеспечивая непрерывный визуальный контроль и соблюдение тайны операций.",
             "visual_sign": "Кассир находится на рабочем месте, сейф закрыт, посторонних лиц и предметов нет.",
-            "url": "https://adilet.zan.kz/rus/docs/P1900000231",
+            "url": "https://adilet.zan.kz/rus/docs/V1900019680",
             "group": "Соответствие нормативным требованиям НБ РК",
             "criticality": "NORMAL",
             "note": "Нарушений кассовой дисциплины, оставления рабочего места, несанкционированного доступа или использования смартфона не выявлено."
