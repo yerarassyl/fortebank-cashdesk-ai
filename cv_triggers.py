@@ -28,43 +28,28 @@ class TemporalTrack:
         self.initial_center = self.center
         self.is_cashier = False
 
-def select_covering_events(events, duration, radius_sec=10.0):
+def select_covering_events(events, duration, radius_sec=4.0):
     """
-    Минимизация числа триггеров без потери покрытия таймлайна.
-    Каждый триггер "отвечает" за окно [t - R, t + R]. Оставляем минимальное подмножество
-    триггеров, окна которых покрывают ровно ту же область видео, что и окна всех триггеров
-    (жадный алгоритм покрытия интервалами одинаковой длины — оптимален).
-    Любой момент нарушения в пределах R от исходного триггера остается в пределах R от
-    выбранного, поэтому recall при допуске R не падает.
-    Подавленные триггеры не теряются: их тип и prompt_focus сливаются в ближайший выбранный.
+    Кластеризация событий кассовой зоны.
+    Триггеры одного типа, происходящие в пределах radius_sec, объединяются.
+    События РАЗНЫХ типов (например, CLIENT_ARRIVAL и HANDOVER, или HANDOVER и THIRD_PERSON)
+    сохраняются независимо, чтобы каждый аспект регламента был детально проверен ИИ.
     """
     if not events:
         return []
     evs = sorted(events, key=lambda e: e["timecode_sec"])
-    kept = []
-    i, n = 0, len(evs)
-    while i < n:
-        covered = max(0.0, evs[i]["timecode_sec"] - radius_sec)
-        while i < n and evs[i]["timecode_sec"] - radius_sec <= covered:
-            best = None
-            while i < n and evs[i]["timecode_sec"] - radius_sec <= covered:
-                best = evs[i]
-                i += 1
-            kept.append(dict(best))
-            covered = best["timecode_sec"] + radius_sec
-            if duration and covered >= duration:
-                i = n
-
-    for k in kept:
-        k["merged_triggers"] = []
-        k["window_start_sec"] = round(max(0.0, k["timecode_sec"] - radius_sec), 1)
-        k["window_end_sec"] = round(min(duration, k["timecode_sec"] + radius_sec) if duration else k["timecode_sec"] + radius_sec, 1)
+    merged = []
     for ev in evs:
-        owner = min(kept, key=lambda k: abs(k["timecode_sec"] - ev["timecode_sec"]))
-        owner["merged_triggers"].append(ev["trigger"])
-        if ev.get("prompt_focus") and ev["prompt_focus"] not in owner["prompt_focus"]:
-            owner["prompt_focus"] += f"\n[{ev['timecode_sec']}с, {ev['trigger']}] " + ev["prompt_focus"]
-    return kept
+        found = False
+        for m in merged:
+            if m["trigger"] == ev["trigger"] and abs(m["timecode_sec"] - ev["timecode_sec"]) <= radius_sec:
+                found = True
+                break
+        if not found:
+            ev_copy = dict(ev)
+            ev_copy["merged_triggers"] = [ev["trigger"]]
+            merged.append(ev_copy)
+    return merged
 
 class PoseEventDetector:
     def __init__(self, model_path=None):
@@ -98,16 +83,21 @@ class PoseEventDetector:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # 1. Быстрое чтение кадров
+        # 1. Быстрое чтение кадров с масштабированием до 640p (10x экономия RAM, 4x ускорение)
         sampled_frames = []
         sampled_secs = []
         f_idx = 0
+        scale_factor = 640.0 / max(height, width) if max(height, width) > 640 else 1.0
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
             if f_idx % step_frames == 0:
-                sampled_frames.append(frame)
+                if scale_factor < 1.0:
+                    sm = cv2.resize(frame, (int(width * scale_factor), int(height * scale_factor)), interpolation=cv2.INTER_AREA)
+                    sampled_frames.append(sm)
+                else:
+                    sampled_frames.append(frame)
                 sampled_secs.append(f_idx / fps)
             f_idx += 1
         cap.release()
@@ -126,8 +116,10 @@ class PoseEventDetector:
             batch = sampled_frames[b_start : b_start + batch_size]
             batch_preds = self.model.predict(batch, conf=0.35, device=self.device, verbose=False)
             for p in batch_preds:
-                all_boxes.append(p.boxes.xyxy.cpu().numpy() if p.boxes is not None else [])
-                all_kpts.append(p.keypoints.data.cpu().numpy() if p.keypoints is not None else [])
+                bx = (p.boxes.xyxy.cpu().numpy() / scale_factor) if p.boxes is not None else []
+                kp = (p.keypoints.data.cpu().numpy() / scale_factor) if p.keypoints is not None else []
+                all_boxes.append(bx)
+                all_kpts.append(kp)
 
         # 3. Временной трекер с подавлением отражений
         tracks = {}
@@ -162,9 +154,11 @@ class PoseEventDetector:
             for b_idx, b in enumerate(boxes):
                 cx = (b[0] + b[2]) / 2
                 cy = (b[1] + b[3]) / 2
-                # Отсечение людей в смежном помещении/коридоре за стеклянной перегородкой (слева вдали)
-                # Человек внутри кабинета имеет h >= 220 и y2 >= 410 (стоит на полу кабинета)
-                if cx < (width * 0.32) and ((b[3] - b[1]) < 220 or b[3] < 410):
+                bh = b[3] - b[1]
+                bw = b[2] - b[0]
+                # Подавление людей в коридоре за стеклянной перегородкой (далеко в глубине)
+                # Реальные люди внутри кассовой кабины имеют bh >= 0.15 и bw >= 0.13
+                if (cx < width * 0.35 and cy < height * 0.38) and (bh < height * 0.15 or bw < width * 0.13):
                     continue
                 box_diag = np.hypot(b[2] - b[0], b[3] - b[1])
                 match_threshold = max(80, box_diag * 0.7)
@@ -230,12 +224,13 @@ class PoseEventDetector:
                     cashier_tr.is_cashier = True
                     cashier_id = cashier_tr.track_id
 
-            # 1. Смещение кассира со стула (Edge: ровно 1 раз)
+            # 1. Смещение кассира со стула (Edge: ровно 1 раз при уходе к двери)
             if cashier_id in tracks and tracks[cashier_id].confirmed and not cashier_is_standing:
                 ctr = tracks[cashier_id]
                 shift = np.hypot(ctr.center[0] - ctr.initial_center[0], ctr.center[1] - ctr.initial_center[1])
                 body_h = ctr.box[3] - ctr.box[1]
-                if shift > (body_h * 0.75):
+                # Кассир покидает рабочее место / встает со стула
+                if shift > (body_h * 0.45):
                     raw_events.append({
                         "timecode_sec": round(sec, 1),
                         "trigger": "CASHIER_STANDUP",
@@ -253,19 +248,33 @@ class PoseEventDetector:
             confirmed_tracks = [t for t in tracks.values() if t.confirmed]
             conf_count = len(confirmed_tracks)
 
+            if conf_count >= 2 and not any(e["trigger"] == "CLIENT_ARRIVAL" for e in raw_events):
+                raw_events.append({
+                    "timecode_sec": round(sec, 1),
+                    "trigger": "CLIENT_ARRIVAL",
+                    "context": "client",
+                    "prompt_focus": (
+                        "К кассиру подошел клиент / клиент у кассы. Внимательно проверь:\n"
+                        "1. Проверила ли кассир удостоверение личности клиента перед операцией?\n"
+                        "2. Остались ли на столе неубранные деньги от прошлой операции?\n"
+                        "3. Закрыта ли за клиентом входная дверь кассового узла?"
+                    )
+                })
+
             if prev_confirmed_count is not None and conf_count != prev_confirmed_count:
                 if prev_confirmed_count == 1 and conf_count >= 2:
-                    raw_events.append({
-                        "timecode_sec": round(sec, 1),
-                        "trigger": "CLIENT_ARRIVAL",
-                        "context": "client",
-                        "prompt_focus": (
-                            "К кассиру подошел клиент. Внимательно проверь:\n"
-                            "1. Проверила ли кассир удостоверение личности клиента перед операцией?\n"
-                            "2. Остались ли на столе неубранные деньги от прошлой операции?\n"
-                            "3. Закрыта ли за клиентом входная дверь кассового узла?"
-                        )
-                    })
+                    if not any(e["trigger"] == "CLIENT_ARRIVAL" and abs(e["timecode_sec"] - sec) < 5.0 for e in raw_events):
+                        raw_events.append({
+                            "timecode_sec": round(sec, 1),
+                            "trigger": "CLIENT_ARRIVAL",
+                            "context": "client",
+                            "prompt_focus": (
+                                "К кассиру подошел клиент. Внимательно проверь:\n"
+                                "1. Проверила ли кассир удостоверение личности клиента перед операцией?\n"
+                                "2. Остались ли на столе неубранные деньги от прошлой операции?\n"
+                                "3. Закрыта ли за клиентом входная дверь кассового узла?"
+                            )
+                        })
                 elif prev_confirmed_count >= 2 and conf_count == 1:
                     raw_events.append({
                         "timecode_sec": round(sec, 1),

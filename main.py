@@ -195,17 +195,10 @@ def process_video_locally(job_id: str, file_path: str, original_filename: str):
         t_end = time.time()
         actual_time = max(0.01, t_end - t_start)
 
-        # Расчет физически реалистичных метрик инференса на GPU RTX 3060 (YOLO11m-Pose + VLM в FP16)
-        # Если проверка завершилась мгновенно (по эталонной базе или быстрому кэшу < 1.5 с),
-        # рассчитываем производительность на основе реальной пропускной способности модели на GPU: ~220 FPS
-        if actual_time < 1.5:
-            proc_fps = 224.5
-            proc_time = round(max(1.8, total_frames / proc_fps), 1)
-        else:
-            proc_time = round(actual_time, 1)
-            proc_fps = round(total_frames / proc_time, 1) if proc_time > 0 else 224.5
-
-        speed_mult = f"{round(duration_sec / proc_time, 1)}x" if (proc_time > 0 and duration_sec > 0) else "8.5x"
+        # Реальный замер времени и FPS работы нейросетевого пайплайна
+        proc_time = round(actual_time, 2)
+        proc_fps = round(total_frames / proc_time, 1) if proc_time > 0 else 0.0
+        speed_mult = f"{round(duration_sec / proc_time, 1)}x" if (proc_time > 0 and duration_sec > 0) else "1.0x"
 
         # 3. Обогащаем инциденты для фронтенда (analyzed_2.html)
         enriched_incidents = []

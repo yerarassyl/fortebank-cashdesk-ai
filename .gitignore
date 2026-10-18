@@ -20,6 +20,14 @@ ENV/
 videos/
 uploads/
 annotated_videos/
+*.jpg
+eval_live_log.txt
+pure_ai_eval_results.csv
+test_tuning.py
+check_fails.py
+open_labels_dump.txt
+video_files_list.txt
+eval_pure_ai.py
 
 # Model weights (auto-downloaded on launch)
 *.pt
