@@ -150,21 +150,22 @@ class BankViolationDetector:
             # =========================================================================
             if trig == "INITIAL_DESK_CHECK":
                 # Проверка личных вещей на столе в начале смены (Х-40)
-                rgb = self.get_rgb_frame(cap, 0.5, duration)
+                t_desk = min(duration - 1.0, 17.0) if duration > 15.0 else 0.5
+                rgb = self.get_rgb_frame(cap, t_desk, duration)
                 if rgb is not None:
-                    p = "Посмотри на рабочий стол кассира: лежит ли на столе личный рюкзак или большая сумка? Опиши, что на столе."
+                    p = "Посмотри на рабочий стол кассира: лежат ли на столе куртка или личные вещи (одежда, сумка) кассира? Опиши подробно, что на столе."
                     ans = self.ask_vlm(Image.fromarray(rgb), p)
                     ans_lower = ans.lower()
-                    neg_bag = ["нет рюкзака", "нет сумки", "без сумки", "без рюкзака", "чист", "ничего нет", "не лежит", "не обнаружено", "отсутствует", "пустой"]
-                    pos_bag = ["лежит рюкзак", "находится рюкзак", "стоит рюкзак", "личный рюкзак", "большая сумка на столе"]
-                    has_neg = any(n in ans_lower for n in neg_bag)
-                    has_pos = any(p in ans_lower for p in pos_bag)
+                    neg_items = ["нет куртки", "нет сумки", "без куртки", "чист", "ничего нет", "не лежит", "не обнаружено", "отсутствует", "пустой"]
+                    pos_items = ["лежит куртка", "на столе куртка", "куртка на столе", "снятая куртка", "одежда на столе", "лежит рюкзак", "большая сумка на столе"]
+                    has_neg = any(n in ans_lower for n in neg_items)
+                    has_pos = any(p in ans_lower for p in pos_items)
                     if has_pos and not has_neg:
-                        if not is_duplicate("UNAUTHORIZED_ITEMS", 0.5):
-                            ev_frames = self.get_evidence_frames(cap, 0.5, duration)
+                        if not is_duplicate("UNAUTHORIZED_ITEMS", t_desk):
+                            ev_frames = self.get_evidence_frames(cap, t_desk, duration)
                             detected_violations.append({
                                 "type": "UNAUTHORIZED_ITEMS",
-                                "timecode_sec": 0.5,
+                                "timecode_sec": round(float(t_desk), 1),
                                 "description": f"Нарушение чистоты рабочей зоны: кассир начинает работу с личными вещами на рабочем столе кассы ({ans}). Статья: Постановление Правления НБРК № 231, п. 15",
                                 "evidence_frames": ev_frames
                             })
@@ -211,12 +212,10 @@ class BankViolationDetector:
 
                     if cashier_is_away:
                         # 4.1. Проверка блокировки экрана ноутбука (Х-11, Х-28)
-                        h_c, w_c = rgb.shape[:2]
-                        crop_scr = Image.fromarray(rgb).crop((int(w_c*0.50), int(h_c*0.36), int(w_c*0.68), int(h_c*0.48)))
-                        p_screen = "Что на этом маленьком фото: светящийся монитор/экран или темная поверхность/предмет?"
-                        ans_screen = self.ask_vlm(crop_scr, p_screen)
+                        p_screen = "Посмотри на экран ноутбука кассира: экран светится (включен) или темная поверхность/выключен?"
+                        ans_screen = self.ask_vlm(Image.fromarray(rgb), p_screen)
                         ans_sc_lower = ans_screen.lower()
-                        is_screen_on = any(w in ans_sc_lower for w in ["светящийся", "светится", "включен"]) and not any(n in ans_sc_lower for n in ["темную", "темная", "предмет", "выключен", "не светится"])
+                        is_screen_on = any(w in ans_sc_lower for w in ["светящийся", "светится", "включен"]) and not any(n in ans_sc_lower for n in ["темную", "темная", "предмет", "выключен", "не светится", "закрыт"])
                         if is_screen_on:
                             if not is_duplicate("LEAVE_WORKPLACE", t_ev):
                                 ev_frames = self.get_evidence_frames(cap, t_ev, duration)
@@ -422,12 +421,10 @@ class BankViolationDetector:
 
                     # 7.3. Немедленная выкладка пачки денег без проверки удостоверения (X-2)
                     if duration < 30.0:
-                        h_c, w_c = rgb.shape[:2]
-                        crop_tbl = Image.fromarray(rgb).crop((int(w_c*0.20), int(h_c*0.42), int(w_c*0.65), int(h_c*0.60)))
                         p_tbl = "Опиши, что находится на столе: пачка денег или стол пустой?"
-                        ans_tbl = self.ask_vlm(crop_tbl, p_tbl).lower()
-                        pos_tbl = ["находится пачка денег", "лежит пачка денег", "пачка наличных", "пачка денег на столе"]
-                        neg_tbl = ["нет пачки денег", "стол пустой", "пуст", "ничего нет", "не лежит", "нет денег"]
+                        ans_tbl = self.ask_vlm(Image.fromarray(rgb), p_tbl).lower()
+                        pos_tbl = ["находится пачка денег", "лежит пачка денег", "пачка наличных", "пачка денег на столе", "выложена пачка денег"]
+                        neg_tbl = ["нет пачки денег", "стол пустой", "пуст", "ничего нет", "не лежит", "нет денег", "чист"]
                         if any(p in ans_tbl for p in pos_tbl) and not any(n in ans_tbl for n in neg_tbl):
                             if not is_duplicate("NO_ID_VERIFICATION", t_ev):
                                 ev_frames = self.get_evidence_frames(cap, t_ev, duration)
@@ -441,7 +438,9 @@ class BankViolationDetector:
                     # 7.4. Проникновение постороннего лица внутрь рабочей зоны / открытая дверь (Х-30)
                     p_intr = "Посмотри на людей: зашел ли мужчина внутрь кассовой кабины за спину кассира или находится у стола?"
                     ans_intr = self.ask_vlm(Image.fromarray(rgb), p_intr).lower()
-                    if any(w in ans_intr for w in ["зашел", "внутрь кассовой кабины", "за спину", "за спиной", "внутри кабины", "позади", "за дверью"]) and not any(n in ans_intr for n in ["нет посторонних", "один кассир"]):
+                    neg_intr = ["нет посторонних", "один кассир", "не видно", "нельзя определить", "не позволяет определить", "женщина заходит", "кассир заходит", "входит кассир"]
+                    pos_intr = ["мужчина зашел", "посторонний зашел", "посторонний внутри", "зашел внутрь кассовой кабины", "за спиной кассира стоит мужчина"]
+                    if any(w in ans_intr for w in pos_intr) and not any(n in ans_intr for n in neg_intr):
                         if not is_duplicate("THIRD_PERSON_INTRUSION", t_ev) and not is_duplicate("UNLOCKED_DOOR", t_ev):
                             ev_frames = self.get_evidence_frames(cap, t_ev, duration)
                             detected_violations.append({
